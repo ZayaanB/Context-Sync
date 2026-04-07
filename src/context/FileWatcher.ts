@@ -5,35 +5,38 @@ import { ContextManager } from './ContextManager';
 export class FileWatcher {
   private _contextManager: ContextManager;
   private _watcher?: vscode.FileSystemWatcher;
+  private _onContextUpdated?: () => void;
 
-  constructor(contextManager: ContextManager) {
+  constructor(contextManager: ContextManager, onContextUpdated?: () => void) {
     this._contextManager = contextManager;
+    this._onContextUpdated = onContextUpdated;
   }
 
   public start(folderPath: string): void {
-    // Stop any existing watcher
     this.stop();
 
-    // Do an initial full load
-    this._contextManager.loadFromFolder(folderPath).catch(console.error);
+    // Initial full load
+    this._contextManager.loadFromFolder(folderPath).then(() => {
+      this._onContextUpdated?.();
+    });
 
-    // Watch for .md changes inside the sync folder
+    // Watch for any .md changes — this fires when teammates' files arrive via OneDrive
     const pattern = new vscode.RelativePattern(folderPath, '*.md');
     this._watcher = vscode.workspace.createFileSystemWatcher(pattern);
 
     this._watcher.onDidCreate((uri) => {
-      const filename = path.basename(uri.fsPath);
-      this._contextManager.updateFile(uri.fsPath, filename);
+      this._contextManager.updateFile(uri.fsPath, path.basename(uri.fsPath));
+      this._onContextUpdated?.();
     });
 
     this._watcher.onDidChange((uri) => {
-      const filename = path.basename(uri.fsPath);
-      this._contextManager.updateFile(uri.fsPath, filename);
+      this._contextManager.updateFile(uri.fsPath, path.basename(uri.fsPath));
+      this._onContextUpdated?.();
     });
 
     this._watcher.onDidDelete((uri) => {
-      const filename = path.basename(uri.fsPath);
-      this._contextManager.removeFile(filename);
+      this._contextManager.removeFile(path.basename(uri.fsPath));
+      this._onContextUpdated?.();
     });
   }
 

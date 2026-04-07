@@ -7,35 +7,44 @@ export interface ChatMessage {
 }
 
 export interface ChatSession {
-  id: string;            // e.g. "alice_2025-01-15_001"
+  id: string;
   username: string;
   messages: ChatMessage[];
   startedAt: string;
-  topic?: string;        // Auto-generated after session ends
-  tags?: string[];       // Auto-generated after session ends
+  topic?: string;
+  tags?: string[];
 }
 
 // ─── Context Types ─────────────────────────────────────────────────────────
 
 export interface ContextFile {
-  filename: string;      // e.g. "chat_alice_2025-01-15_001.md"
+  filename: string;
   username: string;
   topic: string;
   tags: string[];
   summary: string;
   keyDecisions: string[];
-  links: string[];       // Obsidian [[wikilinks]] to related files
+  links: string[];
   modifiedAt: Date;
   rawContent: string;
 }
 
-// ─── Webview Message Types ─────────────────────────────────────────────────
+// ─── Webview → Extension messages ─────────────────────────────────────────
 
 export type WebviewMessage =
   | { type: 'sendMessage'; content: string }
+  | { type: 'newSession' }
+  | { type: 'forceSave' }
   | { type: 'ready' };
+
+// ─── Extension → Webview messages ─────────────────────────────────────────
 
 export type ExtensionMessage =
   | { type: 'addMessage'; message: ChatMessage }
   | { type: 'setLoading'; loading: boolean }
-  | { type: 'syncStatus'; status: string; fileCount: number };
+  | { type: 'syncStatus'; status: string; fileCount: number; fileNames: string[] }
+  | { type: 'qualityGateRejected' }
+  | { type: 'sessionReset' }
+  | { type: 'inactivityReset'; message: string }
+  | { type: 'configWarning'; warnings: string[] }
+  | { type: 'error'; message: string };

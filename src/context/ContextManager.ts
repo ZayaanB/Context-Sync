@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { ContextFile } from '../types';
 
 export class ContextManager {
@@ -13,12 +14,19 @@ export class ContextManager {
 
   public async loadFromFolder(folderPath: string): Promise<void> {
     if (!fs.existsSync(folderPath)) {
-      throw new Error(`Sync folder not found: ${folderPath}`);
+      vscode.window.showWarningMessage(
+        `ContextSync: Sync folder not found: "${folderPath}". Check your contextSync.syncFolder setting.`
+      );
+      return;
     }
 
     const entries = fs.readdirSync(folderPath).filter((f) => f.endsWith('.md'));
-    this._files.clear();
 
+    if (entries.length === 0) {
+      console.log('ContextSync: Sync folder exists but contains no .md files yet.');
+    }
+
+    this._files.clear();
     for (const filename of entries) {
       const filePath = path.join(folderPath, filename);
       const parsed = this._parseMarkdownFile(filePath, filename);
@@ -28,7 +36,7 @@ export class ContextManager {
     }
   }
 
-  // ── Update a single file (called by FileWatcher) ──────────────────────────
+  // ── Update / remove a single file (called by FileWatcher) ────────────────
 
   public updateFile(filePath: string, filename: string): void {
     const parsed = this._parseMarkdownFile(filePath, filename);
@@ -41,22 +49,40 @@ export class ContextManager {
     this._files.delete(filename);
   }
 
-  // ── Build a context string to inject into a chat request ─────────────────
-  //   Simple strategy: sort by recency, take top N files.
-  //   Future: embed and rank by semantic similarity to the query.
+  // ── Build a context string to inject, ranked by relevance to the query ────
 
   public buildContextBlock(query: string): string {
     if (this._files.size === 0) {
       return '';
     }
 
-    const maxFiles = 5; // TODO: read from config
-    const sorted = [...this._files.values()].sort(
-      (a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime()
-    );
-    const top = sorted.slice(0, maxFiles);
+    const config = vscode.workspace.getConfiguration('contextSync');
+    const maxFiles = config.get<number>('maxContextFiles') ?? 5;
 
-    return top
+    const queryTokens = this._tokenise(query);
+
+    // Score each file by tag + topic overlap with the query
+    const scored = [...this._files.values()].map((f) => {
+      const fileTokens = [
+        ...f.tags,
+        ...this._tokenise(f.topic),
+        ...this._tokenise(f.summary),
+      ];
+      const overlap = queryTokens.filter((t) => fileTokens.includes(t)).length;
+      return { file: f, score: overlap };
+    });
+
+    // Sort: first by relevance score, then by recency as tiebreaker
+    const sorted = scored
+      .sort((a, b) =>
+        b.score !== a.score
+          ? b.score - a.score
+          : b.file.modifiedAt.getTime() - a.file.modifiedAt.getTime()
+      )
+      .slice(0, maxFiles)
+      .map((s) => s.file);
+
+    return sorted
       .map((f) => {
         const lines: string[] = [
           `### ${f.filename}`,
@@ -82,6 +108,12 @@ export class ContextManager {
       .join('\n\n---\n\n');
   }
 
+  // ── Return list of loaded filenames (for UI display) ─────────────────────
+
+  public getLoadedFileNames(): string[] {
+    return [...this._files.keys()];
+  }
+
   // ── Parse a .md file into a ContextFile ───────────────────────────────────
 
   private _parseMarkdownFile(
@@ -92,14 +124,12 @@ export class ContextManager {
       const raw = fs.readFileSync(filePath, 'utf-8');
       const stats = fs.statSync(filePath);
 
-      // Parse YAML frontmatter between --- delimiters
       const frontmatterMatch = raw.match(/^---\n([\s\S]*?)\n---/);
       if (!frontmatterMatch) return null;
 
       const fm = this._parseFrontmatter(frontmatterMatch[1]);
       const body = raw.slice(frontmatterMatch[0].length).trim();
 
-      // Extract sections from body
       const summary = this._extractSection(body, 'Summary');
       const keyDecisions = this._extractList(body, 'Key Decisions');
       const links = this._extractWikilinks(body);
@@ -107,7 +137,7 @@ export class ContextManager {
       return {
         filename,
         username: fm['author'] ?? 'unknown',
-        topic: fm['topic'] ?? '',
+        topic: fm['topic']?.replace(/^"|"$/g, '') ?? '',
         tags: this._parseArray(fm['tags'] ?? ''),
         summary,
         keyDecisions,
@@ -120,26 +150,23 @@ export class ContextManager {
     }
   }
 
-  // ── Frontmatter helpers ───────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   private _parseFrontmatter(block: string): Record<string, string> {
     const result: Record<string, string> = {};
     for (const line of block.split('\n')) {
       const idx = line.indexOf(':');
       if (idx === -1) continue;
-      const key = line.slice(0, idx).trim();
-      const value = line.slice(idx + 1).trim();
-      result[key] = value;
+      result[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
     }
     return result;
   }
 
   private _parseArray(value: string): string[] {
-    // Handles both "[a, b, c]" and "a, b, c"
     return value
       .replace(/[\[\]]/g, '')
       .split(',')
-      .map((s) => s.trim())
+      .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
   }
 
@@ -149,15 +176,29 @@ export class ContextManager {
   }
 
   private _extractList(body: string, heading: string): string[] {
-    const section = this._extractSection(body, heading);
-    return section
+    return this._extractSection(body, heading)
       .split('\n')
       .filter((l) => l.startsWith('- '))
       .map((l) => l.slice(2).trim());
   }
 
   private _extractWikilinks(body: string): string[] {
-    const matches = body.match(/\[\[([^\]]+)\]\]/g) ?? [];
-    return matches.map((m) => m.replace(/\[\[|\]\]/g, ''));
+    return (body.match(/\[\[([^\]]+)\]\]/g) ?? []).map((m) =>
+      m.replace(/\[\[|\]\]/g, '')
+    );
+  }
+
+  // Tokenise a string into lowercase words, filtering out stop words
+  private _tokenise(text: string): string[] {
+    const stopWords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to',
+      'for', 'of', 'with', 'is', 'it', 'this', 'that', 'how', 'what',
+      'should', 'we', 'i', 'my', 'do', 'be', 'use', 'can', 'are',
+    ]);
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopWords.has(w));
   }
 }

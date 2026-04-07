@@ -9,39 +9,41 @@ export function activate(context: vscode.ExtensionContext) {
   console.log('ContextSync is active');
 
   const contextManager = new ContextManager();
-  fileWatcher = new FileWatcher(contextManager);
 
-  // Start watching the sync folder if configured
-  const syncFolder = vscode.workspace
-    .getConfiguration('contextSync')
-    .get<string>('syncFolder');
+  fileWatcher = new FileWatcher(contextManager, () => {
+    ChatPanel.notifyContextUpdated(contextManager);
+  });
 
-  if (syncFolder) {
-    fileWatcher.start(syncFolder);
-  }
+  const startWatcher = () => {
+    const syncFolder = vscode.workspace
+      .getConfiguration('contextSync')
+      .get<string>('syncFolder');
 
-  // Re-start watcher if config changes
+    if (syncFolder) {
+      fileWatcher?.start(syncFolder);
+    }
+  };
+
+  startWatcher();
+
+  // Restart watcher if config changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('contextSync.syncFolder')) {
-        const newFolder = vscode.workspace
-          .getConfiguration('contextSync')
-          .get<string>('syncFolder');
-        if (newFolder) {
-          fileWatcher?.start(newFolder);
-        }
+      if (
+        e.affectsConfiguration('contextSync.syncFolder') ||
+        e.affectsConfiguration('contextSync.username')
+      ) {
+        startWatcher();
       }
     })
   );
 
-  // Command: open chat panel
   context.subscriptions.push(
     vscode.commands.registerCommand('contextSync.openChat', () => {
       ChatPanel.createOrShow(context.extensionUri, contextManager);
     })
   );
 
-  // Command: manual sync trigger
   context.subscriptions.push(
     vscode.commands.registerCommand('contextSync.syncNow', async () => {
       const folder = vscode.workspace
@@ -56,6 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       await contextManager.loadFromFolder(folder);
+      ChatPanel.notifyContextUpdated(contextManager);
       vscode.window.showInformationMessage(
         `ContextSync: Loaded ${contextManager.fileCount} context files.`
       );

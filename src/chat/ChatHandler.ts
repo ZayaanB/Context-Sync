@@ -9,18 +9,18 @@ export class ChatHandler {
     this.contextManager = contextManager;
   }
 
-  // ── Send a message and get a response ────────────────────────────────────
-
   public async sendMessage(session: ChatSession): Promise<string> {
-    // Pick the best available Copilot model
-    const models = await vscode.lm.selectChatModels({
-      vendor: 'copilot',
-      family: 'gpt-4o',
-    });
+    let models: vscode.LanguageModelChat[] = [];
+
+    try {
+      models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
+    } catch {
+      // Copilot unavailable — fall through to error below
+    }
 
     if (!models.length) {
       throw new Error(
-        'No Copilot model available. Make sure GitHub Copilot is installed and signed in.'
+        'No Copilot model available. Make sure GitHub Copilot is installed and signed in, then try again.'
       );
     }
 
@@ -28,9 +28,17 @@ export class ChatHandler {
     const messages = this._buildMessages(session);
     const tokenSource = new vscode.CancellationTokenSource();
 
-    const response = await model.sendRequest(messages, {}, tokenSource.token);
+    let response;
+    try {
+      response = await model.sendRequest(messages, {}, tokenSource.token);
+    } catch (err: any) {
+      // Surface a clear message for common Copilot errors
+      if (err?.code === 'NoPermissions') {
+        throw new Error('Copilot returned a permissions error. Check your Copilot subscription is active.');
+      }
+      throw new Error(`Copilot request failed: ${err?.message ?? err}`);
+    }
 
-    // Collect streamed response
     let reply = '';
     for await (const chunk of response.text) {
       reply += chunk;
@@ -39,15 +47,15 @@ export class ChatHandler {
     return reply;
   }
 
-  // ── Build message array with context injected ─────────────────────────────
-
   private _buildMessages(session: ChatSession): vscode.LanguageModelChatMessage[] {
     const messages: vscode.LanguageModelChatMessage[] = [];
 
-    // 1. System-level context from shared .md files
-    const contextBlock = this.contextManager.buildContextBlock(
-      session.messages.map((m) => m.content).join(' ')
-    );
+    // Build the query from the last user message for relevance scoring
+    const lastUserMessage = [...session.messages]
+      .reverse()
+      .find((m) => m.role === 'user')?.content ?? '';
+
+    const contextBlock = this.contextManager.buildContextBlock(lastUserMessage);
 
     if (contextBlock) {
       messages.push(
@@ -56,14 +64,12 @@ export class ChatHandler {
           `Use them as background knowledge when answering — do not mention them unless directly relevant.\n\n` +
           `--- TEAM CONTEXT ---\n${contextBlock}\n--- END CONTEXT ---`
         ),
-        // Dummy assistant ack so model doesn't treat context as a question
         vscode.LanguageModelChatMessage.Assistant(
           'Understood. I have the team context loaded.'
         )
       );
     }
 
-    // 2. Conversation history
     for (const msg of session.messages) {
       if (msg.role === 'user') {
         messages.push(vscode.LanguageModelChatMessage.User(msg.content));

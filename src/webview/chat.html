@@ -12,10 +12,14 @@
       --input-border: var(--vscode-input-border);
       --button-bg: var(--vscode-button-background);
       --button-fg: var(--vscode-button-foreground);
+      --button-secondary-bg: var(--vscode-button-secondaryBackground);
+      --button-secondary-fg: var(--vscode-button-secondaryForeground);
       --user-bubble: var(--vscode-editorWidget-background);
-      --ai-bubble: var(--vscode-editor-inactiveSelectionBackground);
       --border: var(--vscode-panel-border);
       --muted: var(--vscode-descriptionForeground);
+      --warn: var(--vscode-editorWarning-foreground);
+      --error: var(--vscode-editorError-foreground);
+      --success: #73c991;
       --font: var(--vscode-font-family);
       --font-size: var(--vscode-font-size);
     }
@@ -33,7 +37,19 @@
       overflow: hidden;
     }
 
-    /* ── Header ─────────────────────────────────────────────────── */
+    /* ── Config warning banner ───────────────────────────────────────────── */
+    #config-warning {
+      display: none;
+      background: var(--vscode-inputValidation-warningBackground);
+      border-bottom: 1px solid var(--vscode-inputValidation-warningBorder);
+      padding: 6px 12px;
+      font-size: 11px;
+      color: var(--warn);
+      flex-shrink: 0;
+    }
+    #config-warning.visible { display: block; }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
     #header {
       display: flex;
       align-items: center;
@@ -41,30 +57,72 @@
       padding: 8px 12px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
+      gap: 8px;
     }
 
-    #header h1 {
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-    }
+    #header h1 { font-size: 13px; font-weight: 600; }
 
+    #header-actions { display: flex; gap: 6px; align-items: center; }
+
+    .icon-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .icon-btn:hover { color: var(--fg); border-color: var(--fg); }
+
+    /* ── Sync badge ──────────────────────────────────────────────────────── */
     #sync-badge {
       font-size: 11px;
       color: var(--muted);
       display: flex;
       align-items: center;
       gap: 4px;
+      cursor: pointer;
+      position: relative;
     }
 
     #sync-dot {
-      width: 7px;
-      height: 7px;
+      width: 7px; height: 7px;
       border-radius: 50%;
-      background: #73c991;
+      background: var(--muted);
+      flex-shrink: 0;
     }
+    #sync-dot.green { background: var(--success); }
+    #sync-dot.warn  { background: var(--warn); }
 
-    /* ── Messages ───────────────────────────────────────────────── */
+    /* ── Context tooltip ─────────────────────────────────────────────────── */
+    #context-tooltip {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      background: var(--vscode-editorWidget-background);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-size: 11px;
+      white-space: nowrap;
+      z-index: 100;
+      min-width: 200px;
+      max-width: 320px;
+    }
+    #context-tooltip.visible { display: block; }
+    #context-tooltip ul {
+      margin-top: 4px;
+      padding-left: 14px;
+      color: var(--muted);
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    #context-tooltip li { margin-bottom: 2px; word-break: break-all; }
+
+    /* ── Messages ────────────────────────────────────────────────────────── */
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -74,15 +132,10 @@
       gap: 10px;
     }
 
-    .message {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      max-width: 90%;
-    }
-
+    .message { display: flex; flex-direction: column; gap: 3px; max-width: 90%; }
     .message.user { align-self: flex-end; }
     .message.assistant { align-self: flex-start; }
+    .message.system { align-self: center; max-width: 100%; }
 
     .bubble {
       padding: 8px 12px;
@@ -104,13 +157,24 @@
       border-bottom-left-radius: 2px;
     }
 
-    .message-meta {
-      font-size: 10px;
+    .message.system .bubble {
+      background: transparent;
       color: var(--muted);
-      padding: 0 4px;
+      font-size: 11px;
+      font-style: italic;
+      text-align: center;
+      padding: 4px 8px;
     }
 
-    /* ── Typing indicator ───────────────────────────────────────── */
+    .message.warning .bubble {
+      background: var(--vscode-inputValidation-warningBackground);
+      color: var(--warn);
+      font-size: 11px;
+    }
+
+    .message-meta { font-size: 10px; color: var(--muted); padding: 0 4px; }
+
+    /* ── Typing indicator ────────────────────────────────────────────────── */
     #typing {
       display: none;
       align-self: flex-start;
@@ -120,17 +184,19 @@
       font-size: 12px;
       color: var(--muted);
     }
-
     #typing.visible { display: block; }
 
-    /* ── Input bar ──────────────────────────────────────────────── */
+    /* ── Input bar ───────────────────────────────────────────────────────── */
     #input-bar {
       display: flex;
-      gap: 8px;
+      flex-direction: column;
+      gap: 6px;
       padding: 10px 12px;
       border-top: 1px solid var(--border);
       flex-shrink: 0;
     }
+
+    #input-row { display: flex; gap: 8px; }
 
     #user-input {
       flex: 1;
@@ -147,10 +213,7 @@
       outline: none;
       overflow: hidden;
     }
-
-    #user-input:focus {
-      border-color: var(--vscode-focusBorder);
-    }
+    #user-input:focus { border-color: var(--vscode-focusBorder); }
 
     #send-btn {
       background: var(--button-bg);
@@ -164,39 +227,51 @@
       flex-shrink: 0;
       align-self: flex-end;
     }
-
     #send-btn:hover { opacity: 0.9; }
     #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #action-row {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
   </style>
 </head>
 <body>
 
+  <div id="config-warning"></div>
+
   <div id="header">
     <h1>⚡ ContextSync</h1>
-    <span id="sync-badge">
-      <span id="sync-dot"></span>
-      <span id="sync-label">Waiting for sync folder…</span>
-    </span>
+    <div id="header-actions">
+      <div id="sync-badge" title="Click to see loaded context files">
+        <span id="sync-dot"></span>
+        <span id="sync-label">Starting…</span>
+        <div id="context-tooltip">
+          <strong>Loaded context files</strong>
+          <ul id="context-file-list"></ul>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="messages">
     <div class="message assistant">
-      <div class="bubble">
-        Hello! I'm ContextSync — your team's shared AI assistant.
-        Ask me anything. Your conversation will automatically sync to your team's context graph.
-      </div>
+      <div class="bubble">Hello! I'm ContextSync — your team's shared AI assistant. Ask me anything. Useful conversations will automatically sync to your team's context graph.</div>
     </div>
   </div>
 
   <div id="typing">AI is thinking…</div>
 
   <div id="input-bar">
-    <textarea
-      id="user-input"
-      placeholder="Ask something…"
-      rows="1"
-    ></textarea>
-    <button id="send-btn">Send</button>
+    <div id="input-row">
+      <textarea id="user-input" placeholder="Ask something…" rows="1"></textarea>
+      <button id="send-btn">Send</button>
+    </div>
+    <div id="action-row">
+      <button class="icon-btn" id="force-save-btn" title="Force save this conversation, bypassing the quality gate">💾 Force Save</button>
+      <button class="icon-btn" id="new-session-btn" title="Start a fresh chat session">＋ New Session</button>
+    </div>
   </div>
 
   <script>
@@ -207,9 +282,31 @@
     const typingEl = document.getElementById('typing');
     const syncLabel = document.getElementById('sync-label');
     const syncDot = document.getElementById('sync-dot');
+    const syncBadge = document.getElementById('sync-badge');
+    const tooltip = document.getElementById('context-tooltip');
+    const fileList = document.getElementById('context-file-list');
+    const configWarning = document.getElementById('config-warning');
+    const newSessionBtn = document.getElementById('new-session-btn');
+    const forceSaveBtn = document.getElementById('force-save-btn');
 
-    // ── Send ────────────────────────────────────────────────────────────────
+    // ── Tooltip toggle ──────────────────────────────────────────────────────
+    syncBadge.addEventListener('click', () => {
+      tooltip.classList.toggle('visible');
+    });
+    document.addEventListener('click', (e) => {
+      if (!syncBadge.contains(e.target)) tooltip.classList.remove('visible');
+    });
 
+    // ── Buttons ─────────────────────────────────────────────────────────────
+    newSessionBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'newSession' });
+    });
+
+    forceSaveBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'forceSave' });
+    });
+
+    // ── Send ─────────────────────────────────────────────────────────────────
     function sendMessage() {
       const content = inputEl.value.trim();
       if (!content) return;
@@ -219,22 +316,15 @@
     }
 
     sendBtn.addEventListener('click', sendMessage);
-
     inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
-
-    // Auto-resize textarea
     inputEl.addEventListener('input', () => {
       inputEl.style.height = '36px';
       inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
     });
 
-    // ── Receive messages from extension ────────────────────────────────────
-
+    // ── Receive messages from extension ─────────────────────────────────────
     window.addEventListener('message', (event) => {
       const msg = event.data;
 
@@ -249,35 +339,74 @@
       }
 
       if (msg.type === 'syncStatus') {
-        syncLabel.textContent = `${msg.status} · ${msg.fileCount} context files`;
-        syncDot.style.background = '#73c991';
+        syncLabel.textContent = `${msg.status} · ${msg.fileCount} context file${msg.fileCount !== 1 ? 's' : ''}`;
+        syncDot.className = msg.fileCount > 0 ? 'green' : '';
+        // Update tooltip file list
+        fileList.innerHTML = msg.fileNames.length
+          ? msg.fileNames.map(f => `<li>${f}</li>`).join('')
+          : '<li style="font-style:italic">No files loaded yet</li>';
+      }
+
+      if (msg.type === 'qualityGateRejected') {
+        appendSystemMessage('💬 Chat not saved — not technically useful enough yet. Keep discussing or use Force Save.');
+      }
+
+      if (msg.type === 'sessionReset') {
+        appendSystemMessage('─── New session started ───');
+      }
+
+      if (msg.type === 'inactivityReset') {
+        appendSystemMessage('⏱ ' + msg.message);
+      }
+
+      if (msg.type === 'configWarning') {
+        configWarning.textContent = '⚠ ' + msg.warnings.join('  |  ') + '  — Open Settings (Ctrl+,) and search "ContextSync".';
+        configWarning.classList.add('visible');
+      }
+
+      if (msg.type === 'error') {
+        appendWarningMessage('⚠ ' + msg.message);
       }
     });
 
-    // ── Render a message bubble ─────────────────────────────────────────────
-
+    // ── Render helpers ───────────────────────────────────────────────────────
     function appendMessage(msg) {
       const wrapper = document.createElement('div');
       wrapper.className = `message ${msg.role}`;
-
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
       bubble.textContent = msg.content;
-
       const meta = document.createElement('div');
       meta.className = 'message-meta';
-      const time = new Date(msg.timestamp).toLocaleTimeString([], {
-        hour: '2-digit', minute: '2-digit'
-      });
+      const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       meta.textContent = msg.role === 'user' ? `You · ${time}` : `AI · ${time}`;
-
       wrapper.appendChild(bubble);
       wrapper.appendChild(meta);
       messagesEl.appendChild(wrapper);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
-    // ── Notify extension we're ready ────────────────────────────────────────
+    function appendSystemMessage(text) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'message system';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text;
+      wrapper.appendChild(bubble);
+      messagesEl.appendChild(wrapper);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function appendWarningMessage(text) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'message warning';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text;
+      wrapper.appendChild(bubble);
+      messagesEl.appendChild(wrapper);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
 
     vscode.postMessage({ type: 'ready' });
   </script>
