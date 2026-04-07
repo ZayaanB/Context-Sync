@@ -13,13 +13,13 @@ team's Obsidian vault, and injected as context into every team member's AI chat.
 ```
 You chat in VS Code
       ↓
-ContextSync saves chat as .md (chat_alice_2025-01-15_001.md)
+ContextSync saves chat as .md (chat_zayaan_2025-01-15_001.md)
       ↓
-OneDrive syncs .md to team vault
+OneDrive syncs .md to the team vault
       ↓
 Bob opens VS Code → ContextSync loads Alice's .md
       ↓
-Bob's AI chat has Alice's context automatically
+Bob's AI chat has Zayaan's context automatically
 ```
 
 ---
@@ -36,8 +36,8 @@ npm run compile
 
 | Setting | Description | Example |
 |---|---|---|
-| `contextSync.syncFolder` | Path to your OneDrive/Obsidian folder | `/Users/alice/OneDrive/team-context` |
-| `contextSync.username` | Your display name for file naming | `alice` |
+| `contextSync.syncFolder` | Path to your OneDrive/Obsidian folder | `/Users/zayaan/OneDrive/team-context` |
+| `contextSync.username` | Your display name for file naming | `zayaan` |
 | `contextSync.maxContextFiles` | Max context files injected per request | `5` |
 
 ### 3. Open the chat
@@ -52,7 +52,7 @@ Each chat session produces one `.md` file:
 ```md
 ---
 id: alice_2025-01-15_1736934720000
-author: alice
+author: zayaan
 topic: "How should we structure the auth middleware"
 tags: [auth, backend, typescript]
 created: 2025-01-15T10:32:00Z
