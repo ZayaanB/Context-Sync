@@ -6,6 +6,15 @@ ContextSync lets small dev teams share AI conversation context automatically.
 Every chat is saved as a structured `.md` file, synced via OneDrive to your
 team's Obsidian vault, and injected as context into every team member's AI chat.
 
+Why?
+1. Enables collaboration across dev teams
+2. Helps AI remember context about you
+3. Reduces token costs when syncing
+4. Sync your context in real time with others
+
+Find it at:
+https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync&ssr=false#overview
+
 ---
 
 ## How It Works
