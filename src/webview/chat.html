@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ContextSync Chat</title>
+  <style>
+    :root {
+      --bg: var(--vscode-editor-background);
+      --fg: var(--vscode-editor-foreground);
+      --input-bg: var(--vscode-input-background);
+      --input-border: var(--vscode-input-border);
+      --button-bg: var(--vscode-button-background);
+      --button-fg: var(--vscode-button-foreground);
+      --user-bubble: var(--vscode-editorWidget-background);
+      --ai-bubble: var(--vscode-editor-inactiveSelectionBackground);
+      --border: var(--vscode-panel-border);
+      --muted: var(--vscode-descriptionForeground);
+      --font: var(--vscode-font-family);
+      --font-size: var(--vscode-font-size);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font);
+      font-size: var(--font-size);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #header h1 {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    #sync-badge {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    #sync-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #73c991;
+    }
+
+    /* ── Messages ───────────────────────────────────────────────── */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      max-width: 90%;
+    }
+
+    .message.user { align-self: flex-end; }
+    .message.assistant { align-self: flex-start; }
+
+    .bubble {
+      padding: 8px 12px;
+      border-radius: 8px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+    }
+
+    .message.user .bubble {
+      background: var(--button-bg);
+      color: var(--button-fg);
+      border-bottom-right-radius: 2px;
+    }
+
+    .message.assistant .bubble {
+      background: var(--user-bubble);
+      border-bottom-left-radius: 2px;
+    }
+
+    .message-meta {
+      font-size: 10px;
+      color: var(--muted);
+      padding: 0 4px;
+    }
+
+    /* ── Typing indicator ───────────────────────────────────────── */
+    #typing {
+      display: none;
+      align-self: flex-start;
+      padding: 8px 12px;
+      background: var(--user-bubble);
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    #typing.visible { display: block; }
+
+    /* ── Input bar ──────────────────────────────────────────────── */
+    #input-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #user-input {
+      flex: 1;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      color: var(--fg);
+      font-family: var(--font);
+      font-size: var(--font-size);
+      padding: 6px 10px;
+      border-radius: 4px;
+      resize: none;
+      height: 36px;
+      max-height: 120px;
+      outline: none;
+      overflow: hidden;
+    }
+
+    #user-input:focus {
+      border-color: var(--vscode-focusBorder);
+    }
+
+    #send-btn {
+      background: var(--button-bg);
+      color: var(--button-fg);
+      border: none;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+      align-self: flex-end;
+    }
+
+    #send-btn:hover { opacity: 0.9; }
+    #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+  <div id="header">
+    <h1>⚡ ContextSync</h1>
+    <span id="sync-badge">
+      <span id="sync-dot"></span>
+      <span id="sync-label">Waiting for sync folder…</span>
+    </span>
+  </div>
+
+  <div id="messages">
+    <div class="message assistant">
+      <div class="bubble">
+        Hello! I'm ContextSync — your team's shared AI assistant.
+        Ask me anything. Your conversation will automatically sync to your team's context graph.
+      </div>
+    </div>
+  </div>
+
+  <div id="typing">AI is thinking…</div>
+
+  <div id="input-bar">
+    <textarea
+      id="user-input"
+      placeholder="Ask something…"
+      rows="1"
+    ></textarea>
+    <button id="send-btn">Send</button>
+  </div>
+
+  <script>
+    const vscode = acquireVsCodeApi();
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const typingEl = document.getElementById('typing');
+    const syncLabel = document.getElementById('sync-label');
+    const syncDot = document.getElementById('sync-dot');
+
+    // ── Send ────────────────────────────────────────────────────────────────
+
+    function sendMessage() {
+      const content = inputEl.value.trim();
+      if (!content) return;
+      inputEl.value = '';
+      inputEl.style.height = '36px';
+      vscode.postMessage({ type: 'sendMessage', content });
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Auto-resize textarea
+    inputEl.addEventListener('input', () => {
+      inputEl.style.height = '36px';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    });
+
+    // ── Receive messages from extension ────────────────────────────────────
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+
+      if (msg.type === 'addMessage') {
+        appendMessage(msg.message);
+      }
+
+      if (msg.type === 'setLoading') {
+        typingEl.classList.toggle('visible', msg.loading);
+        sendBtn.disabled = msg.loading;
+        inputEl.disabled = msg.loading;
+      }
+
+      if (msg.type === 'syncStatus') {
+        syncLabel.textContent = `${msg.status} · ${msg.fileCount} context files`;
+        syncDot.style.background = '#73c991';
+      }
+    });
+
+    // ── Render a message bubble ─────────────────────────────────────────────
+
+    function appendMessage(msg) {
+      const wrapper = document.createElement('div');
+      wrapper.className = `message ${msg.role}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = msg.content;
+
+      const meta = document.createElement('div');
+      meta.className = 'message-meta';
+      const time = new Date(msg.timestamp).toLocaleTimeString([], {
+        hour: '2-digit', minute: '2-digit'
+      });
+      meta.textContent = msg.role === 'user' ? `You · ${time}` : `AI · ${time}`;
+
+      wrapper.appendChild(bubble);
+      wrapper.appendChild(meta);
+      messagesEl.appendChild(wrapper);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    // ── Notify extension we're ready ────────────────────────────────────────
+
+    vscode.postMessage({ type: 'ready' });
+  </script>
+</body>
+</html>

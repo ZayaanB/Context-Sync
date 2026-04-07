@@ -1,0 +1,60 @@
+{
+  "name": "context-sync",
+  "displayName": "ContextSync",
+  "description": "Collaborative AI context sharing for VS Code teams",
+  "version": "0.0.1",
+  "publisher": "ZayaanBhanwadia",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZayaanB/Context-Sync"
+  },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "contextSync.openChat",
+        "title": "ContextSync: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "contextSync.syncNow",
+        "title": "ContextSync: Sync Now",
+        "icon": "$(sync)"
+      }
+    ],
+    "configuration": {
+      "title": "ContextSync",
+      "properties": {
+        "contextSync.syncFolder": {
+          "type": "string",
+          "description": "Absolute path to your OneDrive/Obsidian vault folder",
+          "default": ""
+        },
+        "contextSync.username": {
+          "type": "string",
+          "description": "Your display name (used for file naming, e.g. 'alice')",
+          "default": ""
+        },
+        "contextSync.maxContextFiles": {
+          "type": "number",
+          "description": "Max number of .md context files to inject per chat request",
+          "default": 5
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.3.0"
+  }
+}
