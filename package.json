@@ -1,8 +1,9 @@
 {
   "name": "context-sync",
   "displayName": "ContextSync",
+  "icon": "images/icon.png",
   "description": "Collaborative AI context sharing for VS Code teams",
-  "version": "0.0.5",
+  "version": "0.1.1",
   "publisher": "ZayaanBhanwadia",
   "license": "MIT",
   "repository": {
