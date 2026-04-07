@@ -17,7 +17,7 @@ ContextSync saves chat as .md (chat_zayaan_2025-01-15_001.md)
       ↓
 OneDrive syncs .md to the team vault
       ↓
-Bob opens VS Code → ContextSync loads Alice's .md
+Bob opens VS Code → ContextSync loads Zayaan's .md
       ↓
 Bob's AI chat has Zayaan's context automatically
 ```
@@ -51,7 +51,7 @@ Each chat session produces one `.md` file:
 
 ```md
 ---
-id: alice_2025-01-15_1736934720000
+id: zayaan-01-15_1736934720000
 author: zayaan
 topic: "How should we structure the auth middleware"
 tags: [auth, backend, typescript]

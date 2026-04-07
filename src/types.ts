@@ -35,6 +35,7 @@ export type WebviewMessage =
   | { type: 'sendMessage'; content: string }
   | { type: 'newSession' }
   | { type: 'forceSave' }
+  | { type: 'setPrivacy'; enabled: boolean }
   | { type: 'ready' };
 
 // ─── Extension → Webview messages ─────────────────────────────────────────

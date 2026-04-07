@@ -235,6 +235,12 @@
       gap: 6px;
       justify-content: flex-end;
     }
+
+    #privacy-btn.active {
+      background: var(--vscode-inputValidation-warningBackground);
+      color: var(--warn);
+      border-color: var(--warn);
+    }
   </style>
 </head>
 <body>
@@ -269,6 +275,7 @@
       <button id="send-btn">Send</button>
     </div>
     <div id="action-row">
+      <button class="icon-btn" id="privacy-btn" title="Toggle privacy mode — your messages won't be saved or shared">🔒 Privacy Off</button>
       <button class="icon-btn" id="force-save-btn" title="Force save this conversation, bypassing the quality gate">💾 Force Save</button>
       <button class="icon-btn" id="new-session-btn" title="Start a fresh chat session">＋ New Session</button>
     </div>
@@ -288,6 +295,8 @@
     const configWarning = document.getElementById('config-warning');
     const newSessionBtn = document.getElementById('new-session-btn');
     const forceSaveBtn = document.getElementById('force-save-btn');
+    const privacyBtn = document.getElementById('privacy-btn');
+    let privacyEnabled = false;
 
     // ── Tooltip toggle ──────────────────────────────────────────────────────
     syncBadge.addEventListener('click', () => {
@@ -298,6 +307,17 @@
     });
 
     // ── Buttons ─────────────────────────────────────────────────────────────
+    privacyBtn.addEventListener('click', () => {
+      privacyEnabled = !privacyEnabled;
+      privacyBtn.textContent = privacyEnabled ? '🔓 Privacy On' : '🔒 Privacy Off';
+      privacyBtn.classList.toggle('active', privacyEnabled);
+      vscode.postMessage({ type: 'setPrivacy', enabled: privacyEnabled });
+      appendSystemMessage(privacyEnabled
+        ? '🔓 Privacy mode on — your messages will not be saved or shared.'
+        : '🔒 Privacy mode off — conversations will sync normally.'
+      );
+    });
+
     newSessionBtn.addEventListener('click', () => {
       vscode.postMessage({ type: 'newSession' });
     });
