@@ -1,20 +1,27 @@
 # ContextSync
 
-> Collaborative AI context sharing for VS Code teams.
+[![Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/ZayaanBhanwadia.context-sync?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/ZayaanBhanwadia.context-sync?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync)
+[![Rating](https://img.shields.io/visual-studio-marketplace/r/ZayaanBhanwadia.context-sync?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync)
 
-ContextSync lets small dev teams share AI conversation context automatically.
+> **Stop re-explaining your code to AI.** Collaborative context sharing for VS Code teams.
+
+ContextSync lets  teams share AI conversation context automatically.
 Every chat is saved as a structured `.md` file, synced via OneDrive to your
 team's Obsidian vault, and injected as context into every team member's AI chat.
 
 Why?
-1. Enables collaboration across dev teams
-2. Helps AI remember context about you
-3. Reduces token costs when syncing
-4. Sync your context in real time with others
+1. **Team Memory:** Enables collaboration across dev teams
+2. **Zero Effort:** Helps AI remember context about you
+3. **Efficiency:** Reduces token costs when syncing
+4. **Locally Controled:** Sync your context in real time with others
 
 Find it at:
 https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync&ssr=false#overview
 
+| Local Context Generation | Real-time Team Sync |
+| :---: | :---: |
+| ![Extension View](./images/example.png) | ![Obsidian View](./images/example2.png) |
 ---
 
 ## How It Works
@@ -103,5 +110,9 @@ src/
 ```
 
 ---
+
+**Want to Contribute?**
+Find the project at:
+https://github.com/ZayaanB/Context-Sync
 
 **Note for Contributors:** Updating the GitHub repository does **not** automatically update the extension for users. To release updates, bump the version in `package.json` and run `vsce publish`.

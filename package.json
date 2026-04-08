@@ -2,31 +2,43 @@
   "name": "context-sync",
   "displayName": "ContextSync",
   "icon": "images/icon.png",
-  "description": "Collaborative AI context sharing for VS Code teams",
-  "version": "0.1.3",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "description": "Collaborative AI context sharing for VS Code teams via Obsidian and OneDrive",
+  "version": "0.1.4",
   "publisher": "ZayaanBhanwadia",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/ZayaanB/Context-Sync"
   },
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Machine Learning",
+    "Programming Languages"
+  ],
   "keywords": [
     "ai",
+    "copilot",
+    "gpt",
+    "llm",
+    "chatgpt",
+    "productivity",
     "context",
     "context sharing",
     "team collaboration",
-    "developer productivity",
     "memory",
-    "ai assistant",
-    "code context",
-    "sync",
     "obsidian",
-    "knowledge base",
-    "notes integration"
+    "sync"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
