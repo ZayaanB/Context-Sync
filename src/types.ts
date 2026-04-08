@@ -1,5 +1,4 @@
-// ─── Chat Types ────────────────────────────────────────────────────────────
-
+// chat types
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -15,8 +14,7 @@ export interface ChatSession {
   tags?: string[];
 }
 
-// ─── Context Types ─────────────────────────────────────────────────────────
-
+// context types
 export interface ContextFile {
   filename: string;
   username: string;
@@ -29,8 +27,7 @@ export interface ContextFile {
   rawContent: string;
 }
 
-// ─── Webview → Extension messages ─────────────────────────────────────────
-
+// websview messages
 export type WebviewMessage =
   | { type: 'sendMessage'; content: string }
   | { type: 'newSession' }
@@ -38,8 +35,7 @@ export type WebviewMessage =
   | { type: 'setPrivacy'; enabled: boolean }
   | { type: 'ready' };
 
-// ─── Extension → Webview messages ─────────────────────────────────────────
-
+// extension messages
 export type ExtensionMessage =
   | { type: 'addMessage'; message: ChatMessage }
   | { type: 'setLoading'; loading: boolean }

@@ -10,8 +10,7 @@ export class ContextManager {
     return this._files.size;
   }
 
-  // ── Load all .md files from the sync folder ───────────────────────────────
-
+  // load md files
   public async loadFromFolder(folderPath: string): Promise<void> {
     if (!fs.existsSync(folderPath)) {
       vscode.window.showWarningMessage(
@@ -36,8 +35,7 @@ export class ContextManager {
     }
   }
 
-  // ── Update / remove a single file (called by FileWatcher) ────────────────
-
+  // update files on change 
   public updateFile(filePath: string, filename: string): void {
     const parsed = this._parseMarkdownFile(filePath, filename);
     if (parsed) {
@@ -49,8 +47,7 @@ export class ContextManager {
     this._files.delete(filename);
   }
 
-  // ── Build a context string to inject, ranked by relevance to the query ────
-
+  // inject context into prompt (AI)
   public buildContextBlock(query: string): string {
     if (this._files.size === 0) {
       return '';
@@ -72,7 +69,7 @@ export class ContextManager {
       return { file: f, score: overlap };
     });
 
-    // Sort: first by relevance score, then by recency as tiebreaker
+    // sort context by relavance (AI)
     const sorted = scored
       .sort((a, b) =>
         b.score !== a.score
@@ -108,14 +105,12 @@ export class ContextManager {
       .join('\n\n---\n\n');
   }
 
-  // ── Return list of loaded filenames (for UI display) ─────────────────────
-
+  // loaded files for UI
   public getLoadedFileNames(): string[] {
     return [...this._files.keys()];
   }
 
-  // ── Parse a .md file into a ContextFile ───────────────────────────────────
-
+  // parse md into context file (AI)
   private _parseMarkdownFile(
     filePath: string,
     filename: string
@@ -150,8 +145,7 @@ export class ContextManager {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
+  // helpers (AI)
   private _parseFrontmatter(block: string): Record<string, string> {
     const result: Record<string, string> = {};
     for (const line of block.split('\n')) {
@@ -188,7 +182,7 @@ export class ContextManager {
     );
   }
 
-  // Tokenise a string into lowercase words, filtering out stop words
+  // filter out common words and punctuation
   private _tokenise(text: string): string[] {
     const stopWords = new Set([
       'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to',

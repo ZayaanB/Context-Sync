@@ -17,6 +17,7 @@ export class MarkdownExporter {
 
     const transcript = this._buildTranscript(session);
 
+    // filter out irrelavant convos
     if (!forceExport) {
       const isWorthSaving = await this._qualityGate(transcript);
       if (!isWorthSaving) {
@@ -30,7 +31,7 @@ export class MarkdownExporter {
       return null;
     }
 
-    // Normalise tags to lowercase to prevent mismatches
+    // normalize tags
     metadata.tags = metadata.tags.map((t) => t.toLowerCase().trim());
 
     const relatedLinks = this._findRelatedFiles(metadata.tags, syncFolder, session.id);
@@ -43,8 +44,7 @@ export class MarkdownExporter {
     return filePath;
   }
 
-  // ── Quality gate ──────────────────────────────────────────────────────────
-
+  // filter gate
   private async _qualityGate(transcript: string): Promise<boolean> {
     const response = await this._callLLM(
       `You are a technical context filter for a software development team.\n` +
@@ -58,8 +58,7 @@ export class MarkdownExporter {
     return response.toLowerCase().includes('yes');
   }
 
-  // ── Metadata extraction ───────────────────────────────────────────────────
-
+  // extract metadata
   private async _extractMetadata(transcript: string): Promise<{
     topic: string;
     tags: string[];
@@ -97,8 +96,7 @@ export class MarkdownExporter {
     }
   }
 
-  // ── Tag-based related file linking ────────────────────────────────────────
-
+  // linking files based on tags
   private _findRelatedFiles(
     tags: string[],
     syncFolder: string,
@@ -123,8 +121,7 @@ export class MarkdownExporter {
       .map((r) => r.name);
   }
 
-  // ── Build .md file ────────────────────────────────────────────────────────
-
+  // build md file with structure
   private _buildMarkdown(
     session: ChatSession,
     metadata: {

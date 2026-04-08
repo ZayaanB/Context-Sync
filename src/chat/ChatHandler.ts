@@ -15,7 +15,7 @@ export class ChatHandler {
     try {
       models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
     } catch {
-      // Copilot unavailable — fall through to error below
+      // copilot unavailable — fall through to error below
     }
 
     if (!models.length) {
@@ -32,7 +32,7 @@ export class ChatHandler {
     try {
       response = await model.sendRequest(messages, {}, tokenSource.token);
     } catch (err: any) {
-      // Surface a clear message for common Copilot errors
+      // surface a clear message for common Copilot errors
       if (err?.code === 'NoPermissions') {
         throw new Error('Copilot returned a permissions error. Check your Copilot subscription is active.');
       }
@@ -50,7 +50,6 @@ export class ChatHandler {
   private _buildMessages(session: ChatSession): vscode.LanguageModelChatMessage[] {
     const messages: vscode.LanguageModelChatMessage[] = [];
 
-    // Build the query from the last user message for relevance scoring
     const lastUserMessage = [...session.messages]
       .reverse()
       .find((m) => m.role === 'user')?.content ?? '';

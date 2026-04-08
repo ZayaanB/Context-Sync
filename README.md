@@ -13,8 +13,7 @@ team's Obsidian vault, and injected as context into every team member's AI chat.
 Why?
 1. **Team Memory:** Enables collaboration across dev teams
 2. **Zero Effort:** Helps AI remember context about you
-3. **Efficiency:** Reduces token costs when syncing
-4. **Locally Controled:** Sync your context in real time with others
+3. **Locally Controled:** Sync your context in real time with others
 
 Find it at:
 https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync&ssr=false#overview

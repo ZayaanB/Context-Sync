@@ -15,12 +15,12 @@ export class FileWatcher {
   public start(folderPath: string): void {
     this.stop();
 
-    // Initial full load
+    // intial load of files
     this._contextManager.loadFromFolder(folderPath).then(() => {
       this._onContextUpdated?.();
     });
 
-    // Watch for any .md changes — this fires when teammates' files arrive via OneDrive
+    // update watcher (look for md files)
     const pattern = new vscode.RelativePattern(folderPath, '*.md');
     this._watcher = vscode.workspace.createFileSystemWatcher(pattern);
 

@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   startWatcher();
 
-  // Restart watcher if config changes
+  // restart watcher if config changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (
@@ -50,6 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
         .getConfiguration('contextSync')
         .get<string>('syncFolder');
 
+      // connection to obsidian vault (sync with onedrive or google drive)
       if (!folder) {
         vscode.window.showErrorMessage(
           'ContextSync: No sync folder configured. Set contextSync.syncFolder in Settings.'

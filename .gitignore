@@ -1,18 +1,23 @@
+# runtime files
 node_modules/
 out/
 *.vsix
 .vscode-test/
 
+# OS files
 .DS_Store
 Thumbs.db
 
+# ts build
 *.tsbuildinfo
 
+# unsed env (for now)
 .env
 .env.local
 
+# logs
 *.log
 npm-debug.log*
 
-# VS Code settings (keep launch.json but ignore personal settings)
+# personal settings
 .vscode/settings.json

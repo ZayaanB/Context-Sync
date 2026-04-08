@@ -18,8 +18,7 @@ export class ChatPanel {
   private _inactivityTimer?: NodeJS.Timeout;
   private _disposables: vscode.Disposable[] = [];
 
-  // ── Static factory ────────────────────────────────────────────────────────
-
+  // static chat panel
   public static createOrShow(extensionUri: vscode.Uri, contextManager: ContextManager) {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
     if (ChatPanel.currentPanel) { ChatPanel.currentPanel._panel.reveal(column); return; }
@@ -41,8 +40,7 @@ export class ChatPanel {
     });
   }
 
-  // ── Constructor ───────────────────────────────────────────────────────────
-
+  // chat panel constructor
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, contextManager: ContextManager) {
     this._panel = panel;
     this._handler = new ChatHandler(contextManager);
@@ -53,8 +51,7 @@ export class ChatPanel {
     this._panel.onDidDispose(() => this._dispose(), null, this._disposables);
   }
 
-  // ── Message handling ──────────────────────────────────────────────────────
-
+  // message handler
   private async _handleWebviewMessage(message: WebviewMessage) {
     if (message.type === 'sendMessage') { await this._handleUserMessage(message.content); }
     else if (message.type === 'newSession') { this._startNewSession(); }
@@ -95,8 +92,6 @@ export class ChatPanel {
     }
   }
 
-  // ── Session management ────────────────────────────────────────────────────
-
   private _startNewSession() {
     this._session = this._createNewSession();
     this._postMessage({ type: 'sessionReset' });
@@ -120,8 +115,7 @@ export class ChatPanel {
     }, INACTIVITY_TIMEOUT_MS);
   }
 
-  // ── Config validation ─────────────────────────────────────────────────────
-
+  // validate config settings
   private _validateConfig() {
     const config = vscode.workspace.getConfiguration('contextSync');
     const warnings: string[] = [];
@@ -130,8 +124,7 @@ export class ChatPanel {
     if (warnings.length) this._postMessage({ type: 'configWarning', warnings });
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
+  // helpers (AI)
   private _postMessage(message: object) { this._panel.webview.postMessage(message); }
 
   private _createNewSession(): ChatSession {

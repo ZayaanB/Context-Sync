@@ -1,0 +1,32 @@
+# source files
+src/
+tsconfig.json
+
+#build output
+*.tsbuildinfo
+
+# runtime files
+node_modules/
+npm-debug.log*
+*.log
+
+# git files
+.git/
+.gitignore
+
+# VS Code specific
+.vscode/
+.vscode-test/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# unsed env (for now)
+.env
+.env.local
+
+# project files
+*.vsix
+README.md
+LICENSE

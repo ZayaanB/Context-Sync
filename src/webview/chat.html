@@ -37,7 +37,7 @@
       overflow: hidden;
     }
 
-    /* ── Config warning banner ───────────────────────────────────────────── */
+    /* config warning banner */
     #config-warning {
       display: none;
       background: var(--vscode-inputValidation-warningBackground);
@@ -49,7 +49,7 @@
     }
     #config-warning.visible { display: block; }
 
-    /* ── Header ──────────────────────────────────────────────────────────── */
+    /* simple header */
     #header {
       display: flex;
       align-items: center;
@@ -76,7 +76,7 @@
     }
     .icon-btn:hover { color: var(--fg); border-color: var(--fg); }
 
-    /* ── Sync badge ──────────────────────────────────────────────────────── */
+    /* sync status icon */
     #sync-badge {
       font-size: 11px;
       color: var(--muted);
@@ -96,7 +96,7 @@
     #sync-dot.green { background: var(--success); }
     #sync-dot.warn  { background: var(--warn); }
 
-    /* ── Context tooltip ─────────────────────────────────────────────────── */
+    /* context icon */
     #context-tooltip {
       display: none;
       position: absolute;
@@ -122,7 +122,7 @@
     }
     #context-tooltip li { margin-bottom: 2px; word-break: break-all; }
 
-    /* ── Messages ────────────────────────────────────────────────────────── */
+    /* messages section */
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -174,7 +174,7 @@
 
     .message-meta { font-size: 10px; color: var(--muted); padding: 0 4px; }
 
-    /* ── Typing indicator ────────────────────────────────────────────────── */
+    /* typing indicator (AI) */
     #typing {
       display: none;
       align-self: flex-start;
@@ -186,7 +186,7 @@
     }
     #typing.visible { display: block; }
 
-    /* ── Input bar ───────────────────────────────────────────────────────── */
+    /* input area */
     #input-bar {
       display: flex;
       flex-direction: column;
@@ -298,7 +298,7 @@
     const privacyBtn = document.getElementById('privacy-btn');
     let privacyEnabled = false;
 
-    // ── Tooltip toggle ──────────────────────────────────────────────────────
+    // tooltip
     syncBadge.addEventListener('click', () => {
       tooltip.classList.toggle('visible');
     });
@@ -306,7 +306,7 @@
       if (!syncBadge.contains(e.target)) tooltip.classList.remove('visible');
     });
 
-    // ── Buttons ─────────────────────────────────────────────────────────────
+    // privacy, new session, and force save actions
     privacyBtn.addEventListener('click', () => {
       privacyEnabled = !privacyEnabled;
       privacyBtn.textContent = privacyEnabled ? '🔓 Privacy On' : '🔒 Privacy Off';
@@ -326,7 +326,7 @@
       vscode.postMessage({ type: 'forceSave' });
     });
 
-    // ── Send ─────────────────────────────────────────────────────────────────
+    // send message
     function sendMessage() {
       const content = inputEl.value.trim();
       if (!content) return;
@@ -344,7 +344,7 @@
       inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
     });
 
-    // ── Receive messages from extension ─────────────────────────────────────
+    // receive messages
     window.addEventListener('message', (event) => {
       const msg = event.data;
 
@@ -389,7 +389,7 @@
       }
     });
 
-    // ── Render helpers ───────────────────────────────────────────────────────
+    // helpers (AI)
     function appendMessage(msg) {
       const wrapper = document.createElement('div');
       wrapper.className = `message ${msg.role}`;
