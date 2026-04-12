@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ChatHandler } from './ChatHandler';
 import { ContextManager } from '../context/ContextManager';
-import { ChatSession, WebviewMessage } from '../types';
+import { ChatSession, WebviewMessage, CopilotModel } from '../types';
 import { MarkdownExporter } from '../markdown/MarkdownExporter';
 
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
@@ -57,10 +57,18 @@ export class ChatPanel {
     else if (message.type === 'newSession') { this._startNewSession(); }
     else if (message.type === 'forceSave') { await this._forceSave(); }
     else if (message.type === 'setPrivacy') { this._privacyMode = message.enabled; }
+    else if (message.type === 'setModel') { this._session.selectedModel = message.modelId; }
+    else if (message.type === 'requestModels') { await this._sendModelList(); }
     else if (message.type === 'ready') {
       this._postMessage({ type: 'syncStatus', status: 'Loaded', fileCount: this._handler.contextManager.fileCount, fileNames: this._handler.contextManager.getLoadedFileNames() });
       this._validateConfig();
+      await this._sendModelList();
     }
+  }
+
+  private async _sendModelList() {
+    const models = await this._handler.getAvailableModels();
+    this._postMessage({ type: 'modelList', models });
   }
 
   private async _handleUserMessage(content: string) {

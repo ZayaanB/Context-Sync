@@ -64,29 +64,6 @@
 
     #header-actions { display: flex; gap: 6px; align-items: center; }
 
-
-/* model selector */
-#model-select {
- background: var(--input-bg);
- color: var(--fg);
- border: 1px solid var(--border);
- border-radius: 4px;
- padding: 3px 8px;
- font-size: 11px;
- font-family: var(--font);
- cursor: pointer;
- max-width: 140px;
-}
-#model-select:focus {
- border-color: var(--vscode-focusBorder);
- outline: none;
-}
-#model-select option {
- background: var(--input-bg);
- font-size: 11px;
-}
-
-
     .icon-btn {
       background: none;
       border: 1px solid var(--border);
@@ -273,9 +250,6 @@
   <div id="header">
     <h1>⚡ ContextSync</h1>
     <div id="header-actions">
- <select id="model-select" title="Select Copilot model">
- <option value="">Loading models…</option>
- </select>
       <div id="sync-badge" title="Click to see loaded context files">
         <span id="sync-dot"></span>
         <span id="sync-label">Starting…</span>

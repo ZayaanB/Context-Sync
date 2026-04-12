@@ -12,6 +12,14 @@ export interface ChatSession {
   startedAt: string;
   topic?: string;
   tags?: string[];
+  selectedModel?: string;
+}
+
+export interface CopilotModel {
+  id: string;
+  name: string;
+  vendor: string;
+  family: string;
 }
 
 // context types
@@ -33,6 +41,8 @@ export type WebviewMessage =
   | { type: 'newSession' }
   | { type: 'forceSave' }
   | { type: 'setPrivacy'; enabled: boolean }
+  | { type: 'setModel'; modelId: string }
+  | { type: 'requestModels' }
   | { type: 'ready' };
 
 // extension messages
@@ -44,4 +54,5 @@ export type ExtensionMessage =
   | { type: 'sessionReset' }
   | { type: 'inactivityReset'; message: string }
   | { type: 'configWarning'; warnings: string[] }
+  | { type: 'modelList'; models: CopilotModel[] }
   | { type: 'error'; message: string };

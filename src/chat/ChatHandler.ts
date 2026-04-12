@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ContextManager } from '../context/ContextManager';
-import { ChatSession } from '../types';
+import { ChatSession, CopilotModel } from '../types';
 
 export class ChatHandler {
   public readonly contextManager: ContextManager;
@@ -9,11 +9,31 @@ export class ChatHandler {
     this.contextManager = contextManager;
   }
 
+  public async getAvailableModels(): Promise<CopilotModel[]> {
+    try {
+      const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+      return models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        vendor: m.vendor,
+        family: m.family,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   public async sendMessage(session: ChatSession): Promise<string> {
     let models: vscode.LanguageModelChat[] = [];
+    const selectedModelId = session.selectedModel;
 
     try {
-      models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
+      if (selectedModelId) {
+        models = await vscode.lm.selectChatModels({ id: selectedModelId });
+      }
+      if (!models.length) {
+        models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+      }
     } catch {
       // copilot unavailable — fall through to error below
     }
