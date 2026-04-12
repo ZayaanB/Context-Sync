@@ -1,9 +1,5 @@
 # ContextSync
 
-[![Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/ZayaanBhanwadia.context-sync?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/ZayaanBhanwadia.context-sync?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync)
-[![Rating](https://img.shields.io/visual-studio-marketplace/r/ZayaanBhanwadia.context-sync?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync)
-
 > **Stop re-explaining your code to AI.** Collaborative context sharing for VS Code teams.
 
 ContextSync lets  teams share AI conversation context automatically.
