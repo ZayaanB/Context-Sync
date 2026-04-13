@@ -322,7 +322,32 @@
     const newSessionBtn = document.getElementById('new-session-btn');
     const forceSaveBtn = document.getElementById('force-save-btn');
     const privacyBtn = document.getElementById('privacy-btn');
+    const modelSelect = document.getElementById('model-select');
     let privacyEnabled = false;
+    let availableModels = [];
+
+    modelSelect.addEventListener('change', () => {
+      const modelId = modelSelect.value;
+      vscode.postMessage({ type: 'setModel', modelId });
+    });
+
+    function renderModelOptions(models) {
+      availableModels = Array.isArray(models) ? models : [];
+
+      if (!availableModels.length) {
+        modelSelect.innerHTML = '<option value="">No models found</option>';
+        modelSelect.disabled = true;
+        return;
+      }
+
+      modelSelect.innerHTML = availableModels
+        .map((m, i) => `<option value="${m.id}" ${i === 0 ? 'selected' : ''}>${m.name}</option>`)
+        .join('');
+      modelSelect.disabled = false;
+
+      // sync model change to extension
+      vscode.postMessage({ type: 'setModel', modelId: modelSelect.value });
+    }
 
     // tooltip
     syncBadge.addEventListener('click', () => {
@@ -382,6 +407,10 @@
         typingEl.classList.toggle('visible', msg.loading);
         sendBtn.disabled = msg.loading;
         inputEl.disabled = msg.loading;
+      }
+
+      if (msg.type === 'modelList') {
+        renderModelOptions(msg.models);
       }
 
       if (msg.type === 'syncStatus') {
@@ -455,6 +484,7 @@
     }
 
     vscode.postMessage({ type: 'ready' });
+    vscode.postMessage({ type: 'requestModels' });
   </script>
 </body>
 </html>
