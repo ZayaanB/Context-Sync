@@ -18,7 +18,6 @@ export function activate(context: vscode.ExtensionContext) {
     const syncFolder = vscode.workspace
       .getConfiguration('contextSync')
       .get<string>('syncFolder');
-
     if (syncFolder) {
       fileWatcher?.start(syncFolder);
     }
@@ -38,19 +37,20 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // open standalone chat panel
   context.subscriptions.push(
     vscode.commands.registerCommand('contextSync.openChat', () => {
       ChatPanel.createOrShow(context.extensionUri, contextManager);
     })
   );
 
+  // manual sync
   context.subscriptions.push(
     vscode.commands.registerCommand('contextSync.syncNow', async () => {
       const folder = vscode.workspace
         .getConfiguration('contextSync')
         .get<string>('syncFolder');
 
-      // connection to obsidian vault (sync with onedrive or google drive)
       if (!folder) {
         vscode.window.showErrorMessage(
           'ContextSync: No sync folder configured. Set contextSync.syncFolder in Settings.'
@@ -65,6 +65,96 @@ export function activate(context: vscode.ExtensionContext) {
       );
     })
   );
+
+  // ── Copilot Chat Participant ───────────────────────────────────────────────
+  // Users can type @contextsync in the Copilot Chat panel to query team context.
+  // This is read-only — it injects context and responds but does not save to .md.
+
+  const participant = vscode.chat.createChatParticipant(
+    'contextsync.assistant',
+    async (
+      request: vscode.ChatRequest,
+      _context: vscode.ChatContext,
+      stream: vscode.ChatResponseStream,
+      token: vscode.CancellationToken
+    ) => {
+      // check sync folder is configured
+      const syncFolder = vscode.workspace
+        .getConfiguration('contextSync')
+        .get<string>('syncFolder');
+
+      if (!syncFolder) {
+        stream.markdown(
+          '⚠️ No sync folder configured. Set `contextSync.syncFolder` in Settings to use ContextSync.'
+        );
+        return;
+      }
+
+      // build context block ranked by relevance to the query
+      const contextBlock = contextManager.buildContextBlock(request.prompt);
+
+      // model selection
+      const models = await vscode.lm.selectChatModels({
+        vendor: 'copilot',
+        family: 'gpt-4o',
+      });
+
+      if (!models.length) {
+        stream.markdown('⚠️ No Copilot model available. Make sure GitHub Copilot is signed in.');
+        return;
+      }
+
+      const model = models[0];
+
+      const messages: vscode.LanguageModelChatMessage[] = [];
+
+      if (contextBlock) {
+        messages.push(
+          vscode.LanguageModelChatMessage.User(
+            `You are ContextSync, a helpful assistant with access to your team's shared knowledge base.\n` +
+            `Use the following team context to inform your answer. ` +
+            `Only reference it if it is directly relevant.\n\n` +
+            `--- TEAM CONTEXT ---\n${contextBlock}\n--- END CONTEXT ---`
+          ),
+          vscode.LanguageModelChatMessage.Assistant(
+            'Understood. I have the team context loaded and will use it where relevant.'
+          )
+        );
+      } else {
+        // no context files loaded and inform user
+        stream.markdown(
+          `> ℹ️ No team context files found in your sync folder yet. ` +
+          `Start a conversation in the ContextSync panel to build your context graph.\n\n`
+        );
+      }
+
+      messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
+
+      const response = await model.sendRequest(messages, {}, token);
+      for await (const chunk of response.text) {
+        stream.markdown(chunk);
+      }
+    }
+  );
+
+  // follow-up button to open the full panel
+  participant.followupProvider = {
+    provideFollowups(
+      _result: vscode.ChatResult,
+      _context: vscode.ChatContext,
+      _token: vscode.CancellationToken
+    ) {
+      return [
+        {
+          prompt: '',
+          label: '$(comment-discussion) Open ContextSync Panel',
+          command: 'contextSync.openChat',
+        },
+      ];
+    },
+  };
+
+  context.subscriptions.push(participant);
 }
 
 export function deactivate() {
