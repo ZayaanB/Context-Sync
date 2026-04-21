@@ -67,6 +67,7 @@ export class ChatHandler {
     return reply;
   }
 
+  // build message history with context
   private _buildMessages(session: ChatSession): vscode.LanguageModelChatMessage[] {
     const messages: vscode.LanguageModelChatMessage[] = [];
 
@@ -86,6 +87,17 @@ export class ChatHandler {
         vscode.LanguageModelChatMessage.Assistant(
           'Understood. I have the team context loaded.'
         )
+      );
+    }
+
+    const isFirstExchange = session.messages.filter(m => m.role === 'user').length <= 1;
+ 
+    if (contextBlock && isFirstExchange) {
+      messages.push(
+        vscode.LanguageModelChatMessage.User(
+          `Team context (use only if relevant):\n${contextBlock}`
+        ),
+        vscode.LanguageModelChatMessage.Assistant('Understood.')
       );
     }
 

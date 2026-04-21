@@ -47,13 +47,8 @@ export class MarkdownExporter {
   // filter gate
   private async _qualityGate(transcript: string): Promise<boolean> {
     const response = await this._callLLM(
-      `You are a technical context filter for a software development team.\n` +
-      `Review this conversation and answer only "yes" or "no":\n` +
-      `Is this conversation technically useful enough to save as shared team context?\n` +
-      `Save it if it contains decisions, solutions, code discussions, architecture choices, or debugging insights.\n` +
-      `Do NOT save greetings, small talk, or vague questions with no resolution.\n\n` +
-      `Conversation:\n${transcript}`,
-      10
+      `Does this conversation contain technical decisions, code solutions, or architecture choices worth saving as team knowledge? Answer only yes or no.\n\n${transcript}`,
+      5
     );
     return response.toLowerCase().includes('yes');
   }
@@ -67,23 +62,10 @@ export class MarkdownExporter {
     keyQuestions: string[];
     codeReferences: string[];
   } | null> {
+
     const response = await this._callLLM(
-      `You are a technical knowledge extractor for a software development team.\n` +
-      `Analyse this conversation and respond ONLY with a JSON object — no markdown, no explanation.\n\n` +
-      `Required format:\n` +
-      `{\n` +
-      `  "topic": "one concise sentence describing what this conversation is about",\n` +
-      `  "tags": ["tag1", "tag2"],\n` +
-      `  "summary": "2-3 sentences capturing the outcome and key context",\n` +
-      `  "keyDecisions": ["decision 1", "decision 2"],\n` +
-      `  "keyQuestions": ["question that was asked and resolved"],\n` +
-      `  "codeReferences": ["file paths or function names mentioned"]\n` +
-      `}\n\n` +
-      `Rules:\n` +
-      `- tags: lowercase, technical, 2-6 tags (e.g. auth, jwt, refactor, typescript)\n` +
-      `- keyDecisions: only concrete decisions made, not observations\n` +
-      `- keyQuestions: only questions that were actually answered\n` +
-      `- codeReferences: only if explicitly mentioned, otherwise empty array\n\n` +
+      `Extract from this dev conversation. JSON only, no markdown:\n` +
+      `{"topic":"one sentence","tags":["2-6 lowercase tech tags"],"summary":"2-3 sentences","keyDecisions":["concrete decisions only"],"keyQuestions":["answered questions only"],"codeReferences":["file paths mentioned"]}\n\n` +
       `Conversation:\n${transcript}`,
       500
     );
@@ -173,7 +155,8 @@ export class MarkdownExporter {
   }
 
   private _buildTranscript(session: ChatSession): string {
-    return session.messages
+    const recent = session.messages.slice(-10);
+    return recent
       .map((m) => `${m.role === 'user' ? session.username : 'AI'}: ${m.content}`)
       .join('\n\n');
   }

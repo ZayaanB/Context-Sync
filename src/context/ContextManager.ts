@@ -47,7 +47,7 @@ export class ContextManager {
     this._files.delete(filename);
   }
 
-  // inject context into prompt (AI)
+  // inject context into prompt
   public buildContextBlock(query: string): string {
     if (this._files.size === 0) {
       return '';
@@ -79,30 +79,12 @@ export class ContextManager {
       .slice(0, maxFiles)
       .map((s) => s.file);
 
-    return sorted
-      .map((f) => {
-        const lines: string[] = [
-          `### ${f.filename}`,
-          `**Author:** ${f.username}  **Topic:** ${f.topic}`,
-          `**Tags:** ${f.tags.join(', ')}`,
-          '',
-          `**Summary:** ${f.summary}`,
-          '',
-        ];
-
-        if (f.keyDecisions.length) {
-          lines.push('**Key Decisions:**');
-          f.keyDecisions.forEach((d) => lines.push(`- ${d}`));
-          lines.push('');
-        }
-
-        if (f.links.length) {
-          lines.push(`**Related:** ${f.links.join(', ')}`);
-        }
-
-        return lines.join('\n');
-      })
-      .join('\n\n---\n\n');
+    return sorted.map((f) => {
+      const decisions = f.keyDecisions.length
+        ? ' | ' + f.keyDecisions.slice(0, 2).join('; ')
+        : '';
+      return `[${f.tags.join(',')}] ${f.topic}${decisions}`;
+    }).join('\n');
   }
 
   // loaded files for UI

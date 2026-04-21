@@ -7,7 +7,7 @@ Every chat is saved as a structured `.md` file, synced via OneDrive to your
 team's Obsidian vault, and injected as context built into every team member's AI chats.
 
 **New Version:**
-Directly integrate with your vscode's github copilot by using @contextsync before a message.
+Directly integrate with your vscode's github copilot by using @contextsync before a message & added better token efficiency.
 
 **Currently only for github copilot - More model support coming soon.**
 
