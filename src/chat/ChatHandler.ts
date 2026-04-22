@@ -46,17 +46,19 @@ export class ChatHandler {
 
     const model = models[0];
     const messages = this._buildMessages(session);
-    const tokenSource = new vscode.CancellationTokenSource();
 
+    const tokenSource = new vscode.CancellationTokenSource();
     let response;
+
     try {
       response = await model.sendRequest(messages, {}, tokenSource.token);
     } catch (err: any) {
-      // surface a clear message for common Copilot errors
       if (err?.code === 'NoPermissions') {
         throw new Error('Copilot returned a permissions error. Check your Copilot subscription is active.');
       }
       throw new Error(`Copilot request failed: ${err?.message ?? err}`);
+    } finally {
+      tokenSource.dispose();
     }
 
     let reply = '';
@@ -67,28 +69,27 @@ export class ChatHandler {
     return reply;
   }
 
-  private _buildMessages(session: ChatSession): vscode.LanguageModelChatMessage[] {
+  // build message history with context
+    private _buildMessages(session: ChatSession): vscode.LanguageModelChatMessage[] {
     const messages: vscode.LanguageModelChatMessage[] = [];
-
+ 
     const lastUserMessage = [...session.messages]
       .reverse()
       .find((m) => m.role === 'user')?.content ?? '';
-
+ 
     const contextBlock = this.contextManager.buildContextBlock(lastUserMessage);
-
-    if (contextBlock) {
+ 
+    const isFirstExchange = session.messages.filter(m => m.role === 'user').length <= 1;
+ 
+    if (contextBlock && isFirstExchange) {
       messages.push(
         vscode.LanguageModelChatMessage.User(
-          `You are a helpful coding assistant. Your team shares context via the following notes. ` +
-          `Use them as background knowledge when answering — do not mention them unless directly relevant.\n\n` +
-          `--- TEAM CONTEXT ---\n${contextBlock}\n--- END CONTEXT ---`
+          `Team context (use only if relevant):\n${contextBlock}`
         ),
-        vscode.LanguageModelChatMessage.Assistant(
-          'Understood. I have the team context loaded.'
-        )
+        vscode.LanguageModelChatMessage.Assistant('Understood.')
       );
     }
-
+ 
     for (const msg of session.messages) {
       if (msg.role === 'user') {
         messages.push(vscode.LanguageModelChatMessage.User(msg.content));
@@ -96,7 +97,7 @@ export class ChatHandler {
         messages.push(vscode.LanguageModelChatMessage.Assistant(msg.content));
       }
     }
-
+ 
     return messages;
   }
 }

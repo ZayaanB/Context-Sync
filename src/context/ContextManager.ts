@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ContextFile } from '../types';
@@ -15,6 +16,15 @@ export class ContextManager {
     if (!fs.existsSync(folderPath)) {
       vscode.window.showWarningMessage(
         `ContextSync: Sync folder not found: "${folderPath}". Check your contextSync.syncFolder setting.`
+      );
+      return;
+    }
+
+    // ensure valid file path
+    const home = os.homedir();
+    if (!folderPath.startsWith(home)) {
+      vscode.window.showWarningMessage(
+        'ContextSync: Sync folder is outside your home directory. Please double-check the path.'
       );
       return;
     }
@@ -47,7 +57,7 @@ export class ContextManager {
     this._files.delete(filename);
   }
 
-  // inject context into prompt (AI)
+  // inject context into prompt
   public buildContextBlock(query: string): string {
     if (this._files.size === 0) {
       return '';
@@ -79,30 +89,12 @@ export class ContextManager {
       .slice(0, maxFiles)
       .map((s) => s.file);
 
-    return sorted
-      .map((f) => {
-        const lines: string[] = [
-          `### ${f.filename}`,
-          `**Author:** ${f.username}  **Topic:** ${f.topic}`,
-          `**Tags:** ${f.tags.join(', ')}`,
-          '',
-          `**Summary:** ${f.summary}`,
-          '',
-        ];
-
-        if (f.keyDecisions.length) {
-          lines.push('**Key Decisions:**');
-          f.keyDecisions.forEach((d) => lines.push(`- ${d}`));
-          lines.push('');
-        }
-
-        if (f.links.length) {
-          lines.push(`**Related:** ${f.links.join(', ')}`);
-        }
-
-        return lines.join('\n');
-      })
-      .join('\n\n---\n\n');
+    return sorted.map((f) => {
+      const decisions = f.keyDecisions.length
+        ? ' | ' + f.keyDecisions.slice(0, 2).map(d => this._sanitiseForPrompt(d)).join('; ')
+        : '';
+      return `[${f.tags.join(',')}] ${this._sanitiseForPrompt(f.topic)}${decisions}`;
+    }).join('\n');
   }
 
   // loaded files for UI
@@ -138,11 +130,25 @@ export class ContextManager {
         keyDecisions,
         links,
         modifiedAt: stats.mtime,
-        rawContent: raw,
       };
     } catch {
       return null;
     }
+  }
+
+  private _sanitiseForPrompt(text: string): string {
+    const injectionPatterns = [
+      /ignore (all |previous )?instructions/i,
+      /you are now/i,
+      /disregard (the |your )?/i,
+      /system prompt/i,
+      /forget (all |previous |your )?/i,
+      /new instructions/i,
+    ];
+    return text
+      .split('\n')
+      .filter(line => !injectionPatterns.some(p => p.test(line)))
+      .join('\n');
   }
 
   // helpers (AI)

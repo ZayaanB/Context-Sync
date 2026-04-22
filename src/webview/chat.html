@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'unsafe-inline';">
   <title>ContextSync Chat</title>
   <style>
     :root {
@@ -307,8 +308,7 @@
     </div>
   </div>
 
-  <script>
-    const vscode = acquireVsCodeApi();
+  <script nonce="{{NONCE}}">    const vscode = acquireVsCodeApi();
     const messagesEl = document.getElementById('messages');
     const inputEl = document.getElementById('user-input');
     const sendBtn = document.getElementById('send-btn');
