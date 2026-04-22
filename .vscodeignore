@@ -1,5 +1,7 @@
 # source files
 src/
+!src/webview/
+!src/webview/chat.html
 tsconfig.json
 
 #build output
