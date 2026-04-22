@@ -32,7 +32,6 @@ export interface ContextFile {
   keyDecisions: string[];
   links: string[];
   modifiedAt: Date;
-  rawContent: string;
 }
 
 // websview messages

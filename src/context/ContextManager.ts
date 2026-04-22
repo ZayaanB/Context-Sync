@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ContextFile } from '../types';
@@ -15,6 +16,15 @@ export class ContextManager {
     if (!fs.existsSync(folderPath)) {
       vscode.window.showWarningMessage(
         `ContextSync: Sync folder not found: "${folderPath}". Check your contextSync.syncFolder setting.`
+      );
+      return;
+    }
+
+    // ensure valid file path
+    const home = os.homedir();
+    if (!folderPath.startsWith(home)) {
+      vscode.window.showWarningMessage(
+        'ContextSync: Sync folder is outside your home directory. Please double-check the path.'
       );
       return;
     }
@@ -81,9 +91,9 @@ export class ContextManager {
 
     return sorted.map((f) => {
       const decisions = f.keyDecisions.length
-        ? ' | ' + f.keyDecisions.slice(0, 2).join('; ')
+        ? ' | ' + f.keyDecisions.slice(0, 2).map(d => this._sanitiseForPrompt(d)).join('; ')
         : '';
-      return `[${f.tags.join(',')}] ${f.topic}${decisions}`;
+      return `[${f.tags.join(',')}] ${this._sanitiseForPrompt(f.topic)}${decisions}`;
     }).join('\n');
   }
 
@@ -120,11 +130,25 @@ export class ContextManager {
         keyDecisions,
         links,
         modifiedAt: stats.mtime,
-        rawContent: raw,
       };
     } catch {
       return null;
     }
+  }
+
+  private _sanitiseForPrompt(text: string): string {
+    const injectionPatterns = [
+      /ignore (all |previous )?instructions/i,
+      /you are now/i,
+      /disregard (the |your )?/i,
+      /system prompt/i,
+      /forget (all |previous |your )?/i,
+      /new instructions/i,
+    ];
+    return text
+      .split('\n')
+      .filter(line => !injectionPatterns.some(p => p.test(line)))
+      .join('\n');
   }
 
   // helpers (AI)

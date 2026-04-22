@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { ChatHandler } from './ChatHandler';
 import { ContextManager } from '../context/ContextManager';
 import { ChatSession, WebviewMessage, CopilotModel } from '../types';
@@ -17,6 +18,7 @@ export class ChatPanel {
   private _privacyMode: boolean = false;
   private _inactivityTimer?: NodeJS.Timeout;
   private _disposables: vscode.Disposable[] = [];
+  private _disposed: boolean = false;
 
   // static chat panel
   public static createOrShow(extensionUri: vscode.Uri, contextManager: ContextManager) {
@@ -118,6 +120,9 @@ export class ChatPanel {
   private _resetInactivityTimer() {
     if (this._inactivityTimer) clearTimeout(this._inactivityTimer);
     this._inactivityTimer = setTimeout(() => {
+      // panel closed on timeout
+      if (this._disposed) return;
+
       this._startNewSession();
       this._postMessage({ type: 'inactivityReset', message: 'New session started after 30 minutes of inactivity.' });
     }, INACTIVITY_TIMEOUT_MS);
@@ -132,9 +137,13 @@ export class ChatPanel {
     if (warnings.length) this._postMessage({ type: 'configWarning', warnings });
   }
 
-  // helpers (AI)
-  private _postMessage(message: object) { this._panel.webview.postMessage(message); }
+  // post message on webview
+  private _postMessage(message: object) {
+    if (this._disposed) return;
+    this._panel.webview.postMessage(message);
+  }
 
+  // helpers (AI)
   private _createNewSession(): ChatSession {
     const config = vscode.workspace.getConfiguration('contextSync');
     const username = config.get<string>('username') || 'user';
@@ -143,11 +152,15 @@ export class ChatPanel {
   }
 
   private _getHtml(extensionUri: vscode.Uri): string {
+    const nonce = crypto.randomBytes(16).toString('hex');
     const htmlPath = path.join(extensionUri.fsPath, 'src', 'webview', 'chat.html');
-    return fs.readFileSync(htmlPath, 'utf-8');
+    const html = fs.readFileSync(htmlPath, 'utf-8');
+    return html.replace(/{{NONCE}}/g, nonce);
   }
 
   private _dispose() {
+    this._disposed = true;
+
     if (this._inactivityTimer) clearTimeout(this._inactivityTimer);
     ChatPanel.currentPanel = undefined;
     this._panel.dispose();

@@ -7,7 +7,7 @@
     "theme": "dark"
   },
   "description": "Collaborative AI context sharing for VS Code teams via Obsidian and OneDrive",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "publisher": "ZayaanBhanwadia",
   "license": "MIT",
   "repository": {

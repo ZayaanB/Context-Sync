@@ -156,6 +156,7 @@ export class MarkdownExporter {
 
   private _buildTranscript(session: ChatSession): string {
     const recent = session.messages.slice(-10);
+    
     return recent
       .map((m) => `${m.role === 'user' ? session.username : 'AI'}: ${m.content}`)
       .join('\n\n');
