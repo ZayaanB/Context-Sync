@@ -90,12 +90,17 @@ export class MarkdownExporter {
       .readdirSync(syncFolder)
       .filter((f) => f.endsWith('.md') && !f.includes(currentSessionId))
       .map((filename) => {
-        const content = fs.readFileSync(path.join(syncFolder, filename), 'utf-8');
-        const tagsMatch = content.match(/^tags:\s*\[([^\]]*)\]/m);
-        if (!tagsMatch) return null;
-        const fileTags = tagsMatch[1].split(',').map((t) => t.trim().toLowerCase());
-        const sharedCount = tags.filter((t) => fileTags.includes(t)).length;
-        return sharedCount > 0 ? { name: filename.replace('.md', ''), sharedCount } : null;
+        try {
+          const content = fs.readFileSync(path.join(syncFolder, filename), 'utf-8');
+          const tagsMatch = content.match(/^tags:\s*\[([^\]]*)\]/m);
+          if (!tagsMatch) return null;
+          
+          const fileTags = tagsMatch[1].split(',').map((t) => t.trim().toLowerCase());
+          const sharedCount = tags.filter((t) => fileTags.includes(t)).length;
+          return sharedCount > 0 ? { name: filename.replace('.md', ''), sharedCount } : null;
+        } catch {
+          return null;
+        }
       })
       .filter((r): r is { name: string; sharedCount: number } => r !== null)
       .sort((a, b) => b.sharedCount - a.sharedCount)
@@ -167,11 +172,16 @@ export class MarkdownExporter {
     if (!models.length) throw new Error('No Copilot model available for export.');
 
     const tokenSource = new vscode.CancellationTokenSource();
-    const response = await models[0].sendRequest(
-      [vscode.LanguageModelChatMessage.User(prompt)],
-      {},
-      tokenSource.token
-    );
+    let response;
+    try {
+      response = await models[0].sendRequest(
+        [vscode.LanguageModelChatMessage.User(prompt)],
+        {},
+        tokenSource.token
+      );
+    } finally {
+      tokenSource.dispose();
+    }
 
     let result = '';
     for await (const chunk of response.text) result += chunk;

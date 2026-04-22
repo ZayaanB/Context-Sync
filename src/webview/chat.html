@@ -326,6 +326,14 @@
     let privacyEnabled = false;
     let availableModels = [];
 
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
     modelSelect.addEventListener('change', () => {
       const modelId = modelSelect.value;
       vscode.postMessage({ type: 'setModel', modelId });
@@ -340,9 +348,12 @@
         return;
       }
 
-      modelSelect.innerHTML = availableModels
-        .map((m, i) => `<option value="${m.id}" ${i === 0 ? 'selected' : ''}>${m.name}</option>`)
-        .join('');
+      modelSelect.innerHTML = availableModels.map((m, i) => {
+        const safeName = escapeHtml(m.name);
+        const safeId = escapeHtml(m.id);
+        return `<option value="${safeId}" ${i === 0 ? 'selected' : ''}>${safeName}</option>`;
+      }).join('');
+
       modelSelect.disabled = false;
 
       // sync model change to extension
@@ -416,9 +427,10 @@
       if (msg.type === 'syncStatus') {
         syncLabel.textContent = `${msg.status} · ${msg.fileCount} context file${msg.fileCount !== 1 ? 's' : ''}`;
         syncDot.className = msg.fileCount > 0 ? 'green' : '';
+        
         // Update tooltip file list
         fileList.innerHTML = msg.fileNames.length
-          ? msg.fileNames.map(f => `<li>${f}</li>`).join('')
+          ? msg.fileNames.map(f => `<li>${escapeHtml(f)}</li>`).join('')
           : '<li style="font-style:italic">No files loaded yet</li>';
       }
 

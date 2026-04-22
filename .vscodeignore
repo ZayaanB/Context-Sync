@@ -30,3 +30,7 @@ Thumbs.db
 
 # project files
 *.vsix
+
+# backups
+*.bak
+*.backup

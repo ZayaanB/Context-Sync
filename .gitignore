@@ -21,3 +21,7 @@ npm-debug.log*
 
 # personal settings
 .vscode/settings.json
+
+# backups
+*.bak
+*.backup
