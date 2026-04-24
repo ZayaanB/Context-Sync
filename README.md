@@ -7,14 +7,14 @@ Every chat is saved as a structured `.md` file, synced via OneDrive to your
 team's Obsidian vault, and injected as context built into every team member's AI chats.
 
 **New Version:**
-Directly integrate with your vscode's github copilot by using @contextsync before a message & added better token efficiency.
+Directly integrate with your VSCode's GitHub Copilot by using @contextsync before a message & added better token efficiency.
 
-**Currently only for github copilot - More model support coming soon.**
+**Currently only for GitHub Copilot - More model support coming soon.**
 
 Why?
 1. **Team Memory:** Enables collaboration across dev teams
 2. **Zero Effort:** Helps AI remember context about you
-3. **Locally Controled:** Sync your context in real time with others
+3. **Locally Controlled:** Sync your context in real time with others
 
 Find it at:
 https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync&ssr=false#overview
@@ -58,6 +58,8 @@ npm run compile
 
 ### 3. Open the chat
 Run command: **ContextSync: Open Chat** (`Ctrl+Shift+P`)
+**OR**
+Type: **@contextsync in GitHub Copilot chat**
 
 ---
 
@@ -84,9 +86,6 @@ Decided to use JWT with 15-minute expiry and refresh token rotation...
 
 ## Context Links
 - [[chat_bob_2025-01-14_003]]
-
-## Transcript
-...
 ```
 
 ---
@@ -115,4 +114,4 @@ src/
 Find the project at:
 https://github.com/ZayaanB/Context-Sync
 
-**Note for Contributors:** Updating the GitHub repository does **not** automatically update the extension for users. To release updates, bump the version in `package.json` and run `vsce publish`.
+**Note for Contributors:** Updating the GitHub repository does **not** automatically update the extension for users. To release updates, bump the version in `package.json` and run `vsce publish` by creating a vscode publisher account.
