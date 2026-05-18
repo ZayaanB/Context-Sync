@@ -6,15 +6,13 @@ ContextSync lets  teams share AI conversation context automatically.
 Every chat is saved as a structured `.md` file, synced via OneDrive to your
 team's Obsidian vault, and injected as context built into every team member's AI chats.
 
-**New Version:**
-Directly integrate with your VSCode's GitHub Copilot by using @contextsync before a message & added better token efficiency.
-
 **Currently only for GitHub Copilot - More model support coming soon.**
 
 Why?
 1. **Team Memory:** Enables collaboration across dev teams
-2. **Zero Effort:** Helps AI remember context about you
-3. **Locally Controlled:** Sync your context in real time with others
+2. **Zero Effort:** Helps AI remember context about you and only recall valid topics
+3. **Locally Controlled:** Sync your context in real time with others and hide conversations using private mode
+4. 4. **Direct Integration:** Directly integrate with Copilot using."@contextsync" in chat
 
 Find it at:
 https://marketplace.visualstudio.com/items?itemName=ZayaanBhanwadia.context-sync&ssr=false#overview
