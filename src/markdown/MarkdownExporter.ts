@@ -175,8 +175,17 @@ export class MarkdownExporter {
   }
 
   private async _callLLM(prompt: string, maxTokens: number): Promise<string> {
-    const models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
-    if (!models.length) throw new Error('No Copilot model available for export.');
+    // first attempt to grab the preferred model family
+    let models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
+    
+    // grab any available copilot model if family naming differs
+    if (!models.length) {
+      models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    }
+    
+    if (!models.length) {
+      throw new Error('No Copilot model available. Make sure GitHub Copilot is signed in.');
+    }
 
     const tokenSource = new vscode.CancellationTokenSource();
     let response;
@@ -191,7 +200,9 @@ export class MarkdownExporter {
     }
 
     let result = '';
-    for await (const chunk of response.text) result += chunk;
+    for await (const chunk of response.text) {
+      result += chunk;
+    }
     return result;
   }
 }
