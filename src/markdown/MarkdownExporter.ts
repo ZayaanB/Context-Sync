@@ -2,8 +2,15 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ChatSession } from '../types';
+import { ContextManager } from '../context/ContextManager'
 
 export class MarkdownExporter {
+
+  private _contextManager: ContextManager;
+
+  constructor(contextManager: ContextManager) {
+    this._contextManager = contextManager;
+  }
 
   public async exportSession(
     session: ChatSession,
