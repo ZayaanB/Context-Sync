@@ -1,4 +1,5 @@
-import * as fs from 'fs';
+import { readdir, readFile, stat } from 'fs/promises';
+import { existsSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -13,44 +14,50 @@ export class ContextManager {
 
   // load md files
   public async loadFromFolder(folderPath: string): Promise<void> {
-    if (!fs.existsSync(folderPath)) {
+    if (!existsSync(folderPath)) {
       vscode.window.showWarningMessage(
         `ContextSync: Sync folder not found: "${folderPath}". Check your contextSync.syncFolder setting.`
       );
       return;
     }
 
-    // ensure valid file path
-    const home = os.homedir();
-    if (!folderPath.startsWith(home)) {
+    // ensure valid file path (resolved + case-insensitive for windows)
+    const home = path.resolve(os.homedir());
+    const resolved = path.resolve(folderPath);
+
+    if (!resolved.toLowerCase().startsWith(home.toLowerCase() + path.sep)) {
       vscode.window.showWarningMessage(
         'ContextSync: Sync folder is outside your home directory. Please double-check the path.'
       );
       return;
     }
 
-    const entries = fs.readdirSync(folderPath).filter((f) => f.endsWith('.md'));
+    let entries: string[];
+    try {
+      entries = (await readdir(folderPath)).filter((f) => f.endsWith('.md'));
+    } catch {
+      vscode.window.showWarningMessage(`ContextSync: Could not read sync folder: "${folderPath}".`);
+      return;
+    }
 
     if (entries.length === 0) {
       console.log('ContextSync: Sync folder exists but contains no .md files yet.');
     }
 
     this._files.clear();
-    for (const filename of entries) {
-      const filePath = path.join(folderPath, filename);
-      const parsed = this._parseMarkdownFile(filePath, filename);
-      if (parsed) {
-        this._files.set(filename, parsed);
-      }
-    }
+    await Promise.all(
+      entries.map(async (filename) => {
+        const filePath = path.join(folderPath, filename);
+        const parsed = await this._parseMarkdownFile(filePath, filename);
+        if (parsed) this._files.set(filename, parsed);
+      })
+    );
   }
 
-  // update files on change 
-  public updateFile(filePath: string, filename: string): void {
-    const parsed = this._parseMarkdownFile(filePath, filename);
-    if (parsed) {
-      this._files.set(filename, parsed);
-    }
+  // update files on change
+  public async updateFile(filePath: string, filename: string): Promise<void> {
+    const parsed = await this._parseMarkdownFile(filePath, filename);
+    if (parsed) this._files.set(filename, parsed);
   }
 
   public removeFile(filename: string): void {
@@ -59,27 +66,19 @@ export class ContextManager {
 
   // inject context into prompt
   public buildContextBlock(query: string): string {
-    if (this._files.size === 0) {
-      return '';
-    }
+    if (this._files.size === 0) return '';
 
     const config = vscode.workspace.getConfiguration('contextSync');
     const maxFiles = config.get<number>('maxContextFiles') ?? 5;
-
     const queryTokens = this._tokenise(query);
 
-    // Score each file by tag + topic overlap with the query
     const scored = [...this._files.values()].map((f) => {
-      const fileTokens = [
-        ...f.tags,
-        ...this._tokenise(f.topic),
-        ...this._tokenise(f.summary),
-      ];
+      const fileTokens = [...f.tags, ...this._tokenise(f.topic), ...this._tokenise(f.summary)];
       const overlap = queryTokens.filter((t) => fileTokens.includes(t)).length;
       return { file: f, score: overlap };
     });
 
-    // sort context by relavance (AI)
+    // sort context by relevance
     const sorted = scored
       .sort((a, b) =>
         b.score !== a.score
@@ -91,10 +90,21 @@ export class ContextManager {
 
     return sorted.map((f) => {
       const decisions = f.keyDecisions.length
-        ? ' | ' + f.keyDecisions.slice(0, 2).map(d => this._sanitiseForPrompt(d)).join('; ')
+        ? ' | ' + f.keyDecisions.slice(0, 2).map((d) => this._sanitiseField(d, 120)).join('; ')
         : '';
-      return `[${f.tags.join(',')}] ${this._sanitiseForPrompt(f.topic)}${decisions}`;
+      return `[${f.tags.join(',')}] ${this._sanitiseField(f.topic, 120)}${decisions}`;
     }).join('\n');
+  }
+
+  // query in-memory cache by tag overlap (used by MarkdownExporter)
+  public findRelatedByTags(tags: string[], excludeSessionId: string): string[] {
+    return [...this._files.values()]
+      .filter((f) => !f.filename.includes(excludeSessionId))
+      .map((f) => ({ f, score: f.tags.filter((t) => tags.includes(t)).length }))
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((r) => r.f.filename.replace('.md', ''));
   }
 
   // loaded files for UI
@@ -102,14 +112,10 @@ export class ContextManager {
     return [...this._files.keys()];
   }
 
-  // parse md into context file (AI)
-  private _parseMarkdownFile(
-    filePath: string,
-    filename: string
-  ): ContextFile | null {
+  // parse md into context file
+  private async _parseMarkdownFile(filePath: string, filename: string): Promise<ContextFile | null> {
     try {
-      const raw = fs.readFileSync(filePath, 'utf-8');
-      const stats = fs.statSync(filePath);
+      const [raw, stats] = await Promise.all([readFile(filePath, 'utf-8'), stat(filePath)]);
 
       const frontmatterMatch = raw.match(/^---\n([\s\S]*?)\n---/);
       if (!frontmatterMatch) return null;
@@ -124,10 +130,10 @@ export class ContextManager {
       return {
         filename,
         username: fm['author'] ?? 'unknown',
-        topic: fm['topic']?.replace(/^"|"$/g, '') ?? '',
+        topic: this._sanitiseField((fm['topic'] ?? '').replace(/^"|"$/g, ''), 120),
         tags: this._parseArray(fm['tags'] ?? ''),
-        summary,
-        keyDecisions,
+        summary: this._sanitiseField(summary, 300),
+        keyDecisions: keyDecisions.map((d) => this._sanitiseField(d, 120)),
         links,
         modifiedAt: stats.mtime,
       };
@@ -136,22 +142,17 @@ export class ContextManager {
     }
   }
 
-  private _sanitiseForPrompt(text: string): string {
-    const injectionPatterns = [
-      /ignore (all |previous )?instructions/i,
-      /you are now/i,
-      /disregard (the |your )?/i,
-      /system prompt/i,
-      /forget (all |previous |your )?/i,
-      /new instructions/i,
-    ];
+  // strip prompt-injectable characters and cap length
+  private _sanitiseField(text: string, maxLen: number): string {
     return text
-      .split('\n')
-      .filter(line => !injectionPatterns.some(p => p.test(line)))
-      .join('\n');
+      .replace(/[`<>{}[\]\\]/g, '')
+      .replace(/\n+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .slice(0, maxLen)
+      .trim();
   }
 
-  // helpers (AI)
+  // helpers
   private _parseFrontmatter(block: string): Record<string, string> {
     const result: Record<string, string> = {};
     for (const line of block.split('\n')) {
@@ -183,9 +184,7 @@ export class ContextManager {
   }
 
   private _extractWikilinks(body: string): string[] {
-    return (body.match(/\[\[([^\]]+)\]\]/g) ?? []).map((m) =>
-      m.replace(/\[\[|\]\]/g, '')
-    );
+    return (body.match(/\[\[([^\]]+)\]\]/g) ?? []).map((m) => m.replace(/\[\[|\]\]/g, ''));
   }
 
   // filter out common words and punctuation

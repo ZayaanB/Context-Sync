@@ -46,7 +46,7 @@ export class ChatPanel {
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, contextManager: ContextManager) {
     this._panel = panel;
     this._handler = new ChatHandler(contextManager);
-    this._exporter = new MarkdownExporter();
+    this._exporter = new MarkdownExporter(contextManager);
     this._session = this._createNewSession();
     this._panel.webview.html = this._getHtml(extensionUri);
     this._panel.webview.onDidReceiveMessage((msg: WebviewMessage) => this._handleWebviewMessage(msg), null, this._disposables);
@@ -55,16 +55,20 @@ export class ChatPanel {
 
   // message handler
   private async _handleWebviewMessage(message: WebviewMessage) {
-    if (message.type === 'sendMessage') { await this._handleUserMessage(message.content); }
-    else if (message.type === 'newSession') { this._startNewSession(); }
-    else if (message.type === 'forceSave') { await this._forceSave(); }
-    else if (message.type === 'setPrivacy') { this._privacyMode = message.enabled; }
-    else if (message.type === 'setModel') { this._session.selectedModel = message.modelId; }
-    else if (message.type === 'requestModels') { await this._sendModelList(); }
-    else if (message.type === 'ready') {
-      this._postMessage({ type: 'syncStatus', status: 'Loaded', fileCount: this._handler.contextManager.fileCount, fileNames: this._handler.contextManager.getLoadedFileNames() });
-      this._validateConfig();
-      await this._sendModelList();
+    try {
+      if (message.type === 'sendMessage')      { await this._handleUserMessage(message.content); }
+      else if (message.type === 'newSession')  { this._startNewSession(); }
+      else if (message.type === 'forceSave')   { await this._forceSave(); }
+      else if (message.type === 'setPrivacy')  { this._privacyMode = message.enabled; }
+      else if (message.type === 'setModel')    { this._session.selectedModel = message.modelId; }
+      else if (message.type === 'requestModels') { await this._sendModelList(); }
+      else if (message.type === 'ready') {
+        this._postMessage({ type: 'syncStatus', status: 'Loaded', fileCount: this._handler.contextManager.fileCount, fileNames: this._handler.contextManager.getLoadedFileNames() });
+        this._validateConfig();
+        await this._sendModelList();
+      }
+    } catch (err) {
+      this._postMessage({ type: 'error', message: String(err) });
     }
   }
 
@@ -120,9 +124,7 @@ export class ChatPanel {
   private _resetInactivityTimer() {
     if (this._inactivityTimer) clearTimeout(this._inactivityTimer);
     this._inactivityTimer = setTimeout(() => {
-      // panel closed on timeout
       if (this._disposed) return;
-
       this._startNewSession();
       this._postMessage({ type: 'inactivityReset', message: 'New session started after 30 minutes of inactivity.' });
     }, INACTIVITY_TIMEOUT_MS);
@@ -143,12 +145,18 @@ export class ChatPanel {
     this._panel.webview.postMessage(message);
   }
 
-  // helpers (AI)
+  // helpers
   private _createNewSession(): ChatSession {
     const config = vscode.workspace.getConfiguration('contextSync');
-    const username = config.get<string>('username') || 'user';
+
+    // sanitise username — prevents path traversal via filenames
+    const rawUsername = config.get<string>('username') || 'user';
+    const username = rawUsername.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 32);
+
     const date = new Date().toISOString().split('T')[0];
-    return { id: `${username}_${date}_${Date.now()}`, username, messages: [], startedAt: new Date().toISOString() };
+    const uid = crypto.randomBytes(4).toString('hex');
+
+    return { id: `${username}_${date}_${uid}`, username, messages: [], startedAt: new Date().toISOString() };
   }
 
   private _getHtml(extensionUri: vscode.Uri): string {
@@ -160,7 +168,6 @@ export class ChatPanel {
 
   private _dispose() {
     this._disposed = true;
-
     if (this._inactivityTimer) clearTimeout(this._inactivityTimer);
     ChatPanel.currentPanel = undefined;
     this._panel.dispose();

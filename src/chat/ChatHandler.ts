@@ -69,19 +69,17 @@ export class ChatHandler {
     return reply;
   }
 
-  // build message history with context
-    private _buildMessages(session: ChatSession): vscode.LanguageModelChatMessage[] {
+  // build message history with context (re-ranked on every turn)
+  private _buildMessages(session: ChatSession): vscode.LanguageModelChatMessage[] {
     const messages: vscode.LanguageModelChatMessage[] = [];
- 
+
     const lastUserMessage = [...session.messages]
       .reverse()
       .find((m) => m.role === 'user')?.content ?? '';
- 
+
     const contextBlock = this.contextManager.buildContextBlock(lastUserMessage);
- 
-    const isFirstExchange = session.messages.filter(m => m.role === 'user').length <= 1;
- 
-    if (contextBlock && isFirstExchange) {
+
+    if (contextBlock) {
       messages.push(
         vscode.LanguageModelChatMessage.User(
           `Team context (use only if relevant):\n${contextBlock}`
@@ -89,7 +87,7 @@ export class ChatHandler {
         vscode.LanguageModelChatMessage.Assistant('Understood.')
       );
     }
- 
+
     for (const msg of session.messages) {
       if (msg.role === 'user') {
         messages.push(vscode.LanguageModelChatMessage.User(msg.content));
@@ -97,7 +95,7 @@ export class ChatHandler {
         messages.push(vscode.LanguageModelChatMessage.Assistant(msg.content));
       }
     }
- 
+
     return messages;
   }
 }

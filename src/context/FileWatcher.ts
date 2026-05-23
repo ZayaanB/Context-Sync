@@ -12,26 +12,30 @@ export class FileWatcher {
     this._onContextUpdated = onContextUpdated;
   }
 
-  public start(folderPath: string): void {
+  // await initial load before starting watcher to avoid race with _files.clear()
+  public async start(folderPath: string): Promise<void> {
     this.stop();
 
     // intial load of files
-    this._contextManager.loadFromFolder(folderPath).then(() => {
-      this._onContextUpdated?.();
-    });
+    await this._contextManager.loadFromFolder(folderPath);
+    this._onContextUpdated?.();
 
     // update watcher (look for md files)
     const pattern = new vscode.RelativePattern(folderPath, '*.md');
     this._watcher = vscode.workspace.createFileSystemWatcher(pattern);
 
     this._watcher.onDidCreate((uri) => {
-      this._contextManager.updateFile(uri.fsPath, path.basename(uri.fsPath));
-      this._onContextUpdated?.();
+      this._contextManager
+        .updateFile(uri.fsPath, path.basename(uri.fsPath))
+        .then(() => this._onContextUpdated?.())
+        .catch((err) => console.error('ContextSync: updateFile error', err));
     });
 
     this._watcher.onDidChange((uri) => {
-      this._contextManager.updateFile(uri.fsPath, path.basename(uri.fsPath));
-      this._onContextUpdated?.();
+      this._contextManager
+        .updateFile(uri.fsPath, path.basename(uri.fsPath))
+        .then(() => this._onContextUpdated?.())
+        .catch((err) => console.error('ContextSync: updateFile error', err));
     });
 
     this._watcher.onDidDelete((uri) => {
