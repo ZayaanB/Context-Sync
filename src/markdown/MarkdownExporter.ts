@@ -178,7 +178,7 @@ export class MarkdownExporter {
   private async _callLLM(prompt: string, maxTokens: number): Promise<string> {
     const models = await selectCopilotModel();
     
-    // noi model available
+    // no model available
     if (!models.length) {
       throw new Error('No Copilot model available. Make sure GitHub Copilot is signed in.');
     }
