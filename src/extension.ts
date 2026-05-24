@@ -67,7 +67,7 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // read only method to use @contextsync in chat
+  // read-only method to use @contextsync in chat
   const participant = vscode.chat.createChatParticipant(
     'contextsync.assistant',
     async (
