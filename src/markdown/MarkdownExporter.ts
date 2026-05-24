@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ChatSession } from '../types';
 import { ContextManager } from '../context/ContextManager'
+import { selectCopilotModel } from '../utils/ModelSelector';
 
 export class MarkdownExporter {
 
@@ -175,18 +176,14 @@ export class MarkdownExporter {
   }
 
   private async _callLLM(prompt: string, maxTokens: number): Promise<string> {
-    // first attempt to grab the preferred model family
-    let models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
+    const models = await selectCopilotModel();
     
-    // grab any available copilot model if family naming differs
-    if (!models.length) {
-      models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-    }
-    
+    // noi model available
     if (!models.length) {
       throw new Error('No Copilot model available. Make sure GitHub Copilot is signed in.');
     }
-
+ 
+    // dispose on close
     const tokenSource = new vscode.CancellationTokenSource();
     let response;
     try {
@@ -198,7 +195,7 @@ export class MarkdownExporter {
     } finally {
       tokenSource.dispose();
     }
-
+ 
     let result = '';
     for await (const chunk of response.text) {
       result += chunk;
