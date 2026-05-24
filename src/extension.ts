@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ChatPanel } from './chat/ChatPanel';
 import { ContextManager } from './context/ContextManager';
 import { FileWatcher } from './context/FileWatcher';
+import { selectCopilotModel } from './utils/ModelSelector';
 
 let fileWatcher: FileWatcher | undefined;
 
@@ -66,10 +67,7 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // ── Copilot Chat Participant ───────────────────────────────────────────────
-  // Users can type @contextsync in the Copilot Chat panel to query team context.
-  // This is read-only — it injects context and responds but does not save to .md.
-
+  // read-only method to use @contextsync in chat
   const participant = vscode.chat.createChatParticipant(
     'contextsync.assistant',
     async (
@@ -94,13 +92,10 @@ export function activate(context: vscode.ExtensionContext) {
       const contextBlock = contextManager.buildContextBlock(request.prompt);
 
       // model selection
-      const models = await vscode.lm.selectChatModels({
-        vendor: 'copilot',
-        family: 'gpt-4o',
-      });
+      const models = await selectCopilotModel();
 
       if (!models.length) {
-        stream.markdown('⚠️ No Copilot model available. Make sure GitHub Copilot is signed in.');
+        stream.markdown('No Copilot model available. Make sure GitHub Copilot is signed in.');
         return;
       }
 
