@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}';">
   <title>ContextSync Chat</title>
-  <style>
+  <style nonce="{{NONCE}}">
     :root {
       --bg: var(--vscode-editor-background);
       --fg: var(--vscode-editor-foreground);
@@ -198,7 +198,7 @@
 
     .message-meta { font-size: 10px; color: var(--muted); padding: 0 4px; }
 
-    /* typing indicator (AI) */
+    /* typing indicator */
     #typing {
       display: none;
       align-self: flex-start;
@@ -265,6 +265,8 @@
       color: var(--warn);
       border-color: var(--warn);
     }
+
+    .empty-note { font-style: italic; }
   </style>
 </head>
 <body>
@@ -326,6 +328,36 @@
     let privacyEnabled = false;
     let availableModels = [];
 
+    // restore messages persisted across window reloads
+    try {
+      const savedState = vscode.getState();
+      if (savedState && Array.isArray(savedState.messages) && savedState.messages.length) {
+        savedState.messages.forEach(renderMessage);
+        vscode.postMessage({ type: 'restoreSession', messages: savedState.messages, sessionId: savedState.sessionId });
+      }
+    } catch (e) {
+      // corrupted state must never block the panel from booting
+      vscode.setState({ messages: [] });
+    }
+
+    const MAX_PERSISTED_MESSAGES = 50;
+
+    function persistMessage(msg) {
+      // never write private content to workspace storage
+      if (privacyEnabled || msg.private) return;
+      const s = vscode.getState() || { messages: [] };
+      s.messages.push(msg);
+      if (s.messages.length > MAX_PERSISTED_MESSAGES) {
+        s.messages = s.messages.slice(-MAX_PERSISTED_MESSAGES);
+      }
+      vscode.setState(s);
+    }
+
+    function clearSavedMessages() {
+      const s = vscode.getState() || {};
+      vscode.setState({ sessionId: s.sessionId, messages: [] });
+    }
+
     function escapeHtml(str) {
       return String(str)
         .replace(/&/g, '&amp;')
@@ -356,11 +388,9 @@
 
       modelSelect.disabled = false;
 
-      // sync model change to extension
       vscode.postMessage({ type: 'setModel', modelId: modelSelect.value });
     }
 
-    // tooltip
     syncBadge.addEventListener('click', () => {
       tooltip.classList.toggle('visible');
     });
@@ -368,11 +398,11 @@
       if (!syncBadge.contains(e.target)) tooltip.classList.remove('visible');
     });
 
-    // privacy, new session, and force save actions
     privacyBtn.addEventListener('click', () => {
       privacyEnabled = !privacyEnabled;
       privacyBtn.textContent = privacyEnabled ? '🔓 Privacy On' : '🔒 Privacy Off';
       privacyBtn.classList.toggle('active', privacyEnabled);
+      if (privacyEnabled) clearSavedMessages();
       vscode.postMessage({ type: 'setPrivacy', enabled: privacyEnabled });
       appendSystemMessage(privacyEnabled
         ? '🔓 Privacy mode on — your messages will not be saved or shared.'
@@ -388,7 +418,6 @@
       vscode.postMessage({ type: 'forceSave' });
     });
 
-    // send message
     function sendMessage() {
       const content = inputEl.value.trim();
       if (!content) return;
@@ -406,7 +435,7 @@
       inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
     });
 
-    // receive messages
+    // messages from the extension
     window.addEventListener('message', (event) => {
       const msg = event.data;
 
@@ -427,11 +456,9 @@
       if (msg.type === 'syncStatus') {
         syncLabel.textContent = `${msg.status} · ${msg.fileCount} context file${msg.fileCount !== 1 ? 's' : ''}`;
         syncDot.className = msg.fileCount > 0 ? 'green' : '';
-        
-        // Update tooltip file list
         fileList.innerHTML = msg.fileNames.length
           ? msg.fileNames.map(f => `<li>${escapeHtml(f)}</li>`).join('')
-          : '<li style="font-style:italic">No files loaded yet</li>';
+          : '<li class="empty-note">No files loaded yet</li>';
       }
 
       if (msg.type === 'qualityGateRejected') {
@@ -439,7 +466,14 @@
       }
 
       if (msg.type === 'sessionReset') {
+        clearSavedMessages();
         appendSystemMessage('─── New session started ───');
+      }
+
+      if (msg.type === 'sessionInfo') {
+        const s = vscode.getState() || { messages: [] };
+        s.sessionId = msg.id;
+        vscode.setState(s);
       }
 
       if (msg.type === 'inactivityReset') {
@@ -456,8 +490,12 @@
       }
     });
 
-    // helpers (AI)
     function appendMessage(msg) {
+      renderMessage(msg);
+      persistMessage(msg);
+    }
+
+    function renderMessage(msg) {
       const wrapper = document.createElement('div');
       wrapper.className = `message ${msg.role}`;
       const bubble = document.createElement('div');

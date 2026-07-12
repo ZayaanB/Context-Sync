@@ -11,7 +11,7 @@ Thumbs.db
 # ts build
 *.tsbuildinfo
 
-# unsed env (for now)
+# unused env (for now)
 .env
 .env.local
 

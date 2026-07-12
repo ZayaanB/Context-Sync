@@ -1,22 +1,25 @@
 
 import * as vscode from 'vscode';
  
-export async function selectCopilotModel(
+export async function selectVsCodeModel(
   preferredModelId?: string
 ): Promise<vscode.LanguageModelChat[]> {
   try {
-    // user choice
+    // user selected model first
     if (preferredModelId) {
       const byId = await vscode.lm.selectChatModels({ id: preferredModelId });
       if (byId.length) return byId;
     }
 
-    // preferred model family
+    // fall back to the default copilot family
     const byFamily = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
     if (byFamily.length) return byFamily;
 
-    // any available model
-    return await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    // then copilot then any provider
+    const copilot = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    if (copilot.length) return copilot;
+
+    return await vscode.lm.selectChatModels({});
   } catch {
     return [];
   }

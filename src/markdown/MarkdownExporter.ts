@@ -1,16 +1,30 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
+import { writeFile, rename, unlink } from 'fs/promises';
 import * as path from 'path';
-import { ChatSession } from '../types';
+import { ChatMessage, ChatSession } from '../types';
 import { ContextManager } from '../context/ContextManager'
-import { selectCopilotModel } from '../utils/ModelSelector';
+import { completeWithModel } from '../llm/ModelRouter';
+
+interface SessionMetadata {
+  worthSaving: boolean;
+  topic: string;
+  tags: string[];
+  summary: string;
+  keyDecisions: string[];
+  keyQuestions: string[];
+  codeReferences: string[];
+}
+
+const MAX_TRANSCRIPT_MESSAGE_CHARS = 2000;
 
 export class MarkdownExporter {
 
   private _contextManager: ContextManager;
+  private _secrets: vscode.SecretStorage;
 
-  constructor(contextManager: ContextManager) {
+  constructor(contextManager: ContextManager, secrets: vscode.SecretStorage) {
     this._contextManager = contextManager;
+    this._secrets = secrets;
   }
 
   public async exportSession(
@@ -19,142 +33,125 @@ export class MarkdownExporter {
     forceExport = false
   ): Promise<string | null> {
 
-    if (session.messages.length < 2) {
+    // never export messages sent under privacy mode
+    const shareable = session.messages.filter((m) => !m.private);
+    if (shareable.length < 2) {
       return null;
     }
 
-    const transcript = this._buildTranscript(session);
+    const transcript = this._buildTranscript(shareable, session.username);
 
-    // filter out irrelavant convos
-    if (!forceExport) {
-      const isWorthSaving = await this._qualityGate(transcript);
-      if (!isWorthSaving) {
-        console.log('ContextSync: Quality gate rejected — conversation not technically useful yet.');
-        return null;
-      }
-    }
-
-    const metadata = await this._extractMetadata(transcript);
+    // one llm call decides worth-saving and extracts metadata together
+    const metadata = await this._extractMetadata(transcript, session.selectedModel);
     if (!metadata) {
       return null;
     }
 
-    // normalize tags
-    metadata.tags = metadata.tags.map((t) => t.toLowerCase().trim());
+    if (!forceExport && !metadata.worthSaving) {
+      console.log('ContextSync: Quality gate rejected — conversation not technically useful yet.');
+      return null;
+    }
 
-    const relatedLinks = this._findRelatedFiles(metadata.tags, syncFolder, session.id);
+    metadata.tags = metadata.tags
+      .map((t) => t.toLowerCase().trim().replace(/[^a-z0-9_\- ]/g, ''))
+      .filter(Boolean);
+
+    const relatedLinks = this._contextManager.findRelatedByTags(metadata.tags, session.id);
 
     const filename = `chat_${session.id}.md`;
     const filePath = path.join(syncFolder, filename);
     const content = this._buildMarkdown(session, metadata, relatedLinks);
-    fs.writeFileSync(filePath, content, 'utf-8');
+
+    // write via temp file so the sync client never sees a partial file
+    const tmpPath = `${filePath}.tmp`;
+    try {
+      await writeFile(tmpPath, content, 'utf-8');
+      await rename(tmpPath, filePath);
+    } catch (err) {
+      await unlink(tmpPath).catch(() => undefined);
+      throw err;
+    }
 
     return filePath;
   }
 
-  // filter gate
-  private async _qualityGate(transcript: string): Promise<boolean> {
-    const response = await this._callLLM(
-      `Does this conversation contain technical decisions, code solutions, or architecture choices worth saving as team knowledge? Answer only yes or no.\n\n${transcript}`,
-      5
-    );
-    return response.toLowerCase().includes('yes');
-  }
-
-  // extract metadata
-  private async _extractMetadata(transcript: string): Promise<{
-    topic: string;
-    tags: string[];
-    summary: string;
-    keyDecisions: string[];
-    keyQuestions: string[];
-    codeReferences: string[];
-  } | null> {
-
+  private async _extractMetadata(transcript: string, preferredModelId?: string): Promise<SessionMetadata | null> {
     const response = await this._callLLM(
       `Extract from this dev conversation. JSON only, no markdown:\n` +
-      `{"topic":"one sentence","tags":["2-6 lowercase tech tags"],"summary":"2-3 sentences","keyDecisions":["concrete decisions only"],"keyQuestions":["answered questions only"],"codeReferences":["file paths mentioned"]}\n\n` +
+      `{"worthSaving":true if it contains technical decisions, code solutions, or architecture choices worth saving as team knowledge, else false,` +
+      `"topic":"one sentence","tags":["2-6 lowercase tech tags"],"summary":"2-3 sentences","keyDecisions":["concrete decisions only"],"keyQuestions":["answered questions only"],"codeReferences":["file paths mentioned"]}\n\n` +
       `Conversation:\n${transcript}`,
-      500
+      500,
+      preferredModelId
     );
 
     try {
-      return JSON.parse(response.replace(/```json|```/g, '').trim());
+      const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
+      return this._validateMetadata(parsed);
     } catch {
-      console.error('ContextSync: Failed to parse metadata JSON', response);
+      console.error('ContextSync: Failed to parse metadata JSON');
       return null;
     }
   }
 
-  // linking files based on tags
-  private _findRelatedFiles(
-    tags: string[],
-    syncFolder: string,
-    currentSessionId: string
-  ): string[] {
-    if (!fs.existsSync(syncFolder)) return [];
+  // never trust llm output shape
+  private _validateMetadata(parsed: unknown): SessionMetadata | null {
+    if (!parsed || typeof parsed !== 'object') return null;
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.topic !== 'string' || typeof obj.summary !== 'string') return null;
 
-    return fs
-      .readdirSync(syncFolder)
-      .filter((f) => f.endsWith('.md') && !f.includes(currentSessionId))
-      .map((filename) => {
-        try {
-          const content = fs.readFileSync(path.join(syncFolder, filename), 'utf-8');
-          const tagsMatch = content.match(/^tags:\s*\[([^\]]*)\]/m);
-          if (!tagsMatch) return null;
-          
-          const fileTags = tagsMatch[1].split(',').map((t) => t.trim().toLowerCase());
-          const sharedCount = tags.filter((t) => fileTags.includes(t)).length;
-          return sharedCount > 0 ? { name: filename.replace('.md', ''), sharedCount } : null;
-        } catch {
-          return null;
-        }
-      })
-      .filter((r): r is { name: string; sharedCount: number } => r !== null)
-      .sort((a, b) => b.sharedCount - a.sharedCount)
-      .slice(0, 3)
-      .map((r) => r.name);
+    // bound list sizes and entry lengths so llm output cannot bloat vault files
+    const asStringArray = (v: unknown): string[] =>
+      Array.isArray(v)
+        ? v.filter((x): x is string => typeof x === 'string').map((x) => x.slice(0, 300)).slice(0, 12)
+        : [];
+
+    return {
+      worthSaving: obj.worthSaving === true,
+      topic: obj.topic.slice(0, 300),
+      summary: obj.summary.slice(0, 1000),
+      tags: asStringArray(obj.tags),
+      keyDecisions: asStringArray(obj.keyDecisions),
+      keyQuestions: asStringArray(obj.keyQuestions),
+      codeReferences: asStringArray(obj.codeReferences),
+    };
   }
 
-  // build md file with structure
   private _buildMarkdown(
     session: ChatSession,
-    metadata: {
-      topic: string; tags: string[]; summary: string;
-      keyDecisions: string[]; keyQuestions: string[]; codeReferences: string[];
-    },
+    metadata: SessionMetadata,
     relatedLinks: string[]
   ): string {
     const lines = [
       '---',
       `id: ${session.id}`,
       `author: ${session.username}`,
-      `topic: "${metadata.topic}"`,
+      `topic: "${this._escapeYaml(metadata.topic)}"`,
       `tags: [${metadata.tags.join(', ')}]`,
       `created: ${session.startedAt}`,
       `updated: ${new Date().toISOString()}`,
       '---',
       '',
       '## Summary',
-      metadata.summary,
+      this._flattenBodyField(metadata.summary),
       '',
     ];
 
     if (metadata.keyDecisions.length) {
       lines.push('## Key Decisions');
-      metadata.keyDecisions.forEach((d) => lines.push(`- ${d}`));
+      metadata.keyDecisions.forEach((d) => lines.push(`- ${this._flattenBodyField(d)}`));
       lines.push('');
     }
 
     if (metadata.keyQuestions.length) {
       lines.push('## Key Questions');
-      metadata.keyQuestions.forEach((q) => lines.push(`- ${q}`));
+      metadata.keyQuestions.forEach((q) => lines.push(`- ${this._flattenBodyField(q)}`));
       lines.push('');
     }
 
     if (metadata.codeReferences.length) {
       lines.push('## Code References');
-      metadata.codeReferences.forEach((r) => lines.push(`- ${r}`));
+      metadata.codeReferences.forEach((r) => lines.push(`- ${this._flattenBodyField(r)}`));
       lines.push('');
     }
 
@@ -167,39 +164,34 @@ export class MarkdownExporter {
     return lines.join('\n');
   }
 
-  private _buildTranscript(session: ChatSession): string {
-    const recent = session.messages.slice(-10);
-    
-    return recent
-      .map((m) => `${m.role === 'user' ? session.username : 'AI'}: ${m.content}`)
+  private _escapeYaml(text: string): string {
+    return text
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"');
+  }
+
+  // keep llm output from breaking section parsing on reload
+  private _flattenBodyField(text: string): string {
+    return text
+      .replace(/\s*\r?\n\s*/g, ' ')
+      .replace(/^#+\s*/, '')
+      .trim();
+  }
+
+  private _buildTranscript(messages: ChatMessage[], username: string): string {
+    return messages
+      .slice(-10)
+      .map((m) => `${m.role === 'user' ? username : 'AI'}: ${m.content.slice(0, MAX_TRANSCRIPT_MESSAGE_CHARS)}`)
       .join('\n\n');
   }
 
-  private async _callLLM(prompt: string, maxTokens: number): Promise<string> {
-    const models = await selectCopilotModel();
-    
-    // no model available
-    if (!models.length) {
-      throw new Error('No Copilot model available. Make sure GitHub Copilot is signed in.');
-    }
- 
-    // dispose on close
-    const tokenSource = new vscode.CancellationTokenSource();
-    let response;
-    try {
-      response = await models[0].sendRequest(
-        [vscode.LanguageModelChatMessage.User(prompt)],
-        {},
-        tokenSource.token
-      );
-    } finally {
-      tokenSource.dispose();
-    }
- 
-    let result = '';
-    for await (const chunk of response.text) {
-      result += chunk;
-    }
-    return result;
+  private async _callLLM(prompt: string, maxTokens: number, preferredModelId?: string): Promise<string> {
+    return completeWithModel(
+      preferredModelId,
+      [{ role: 'user', content: prompt }],
+      { maxTokens },
+      this._secrets
+    );
   }
 }

@@ -51,6 +51,14 @@
         "command": "contextSync.syncNow",
         "title": "ContextSync: Sync Now",
         "icon": "$(sync)"
+      },
+      {
+        "command": "contextSync.setAnthropicKey",
+        "title": "ContextSync: Set Anthropic API Key"
+      },
+      {
+        "command": "contextSync.setOpenAiKey",
+        "title": "ContextSync: Set OpenAI API Key"
       }
     ],
     "chatParticipants": [
@@ -78,19 +86,34 @@
         "contextSync.maxContextFiles": {
           "type": "number",
           "description": "Max number of .md context files to inject per chat request",
-          "default": 5
+          "default": 5,
+          "minimum": 1
+        },
+        "contextSync.anthropicModels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Anthropic model IDs offered in the model picker once an API key is stored (ContextSync: Set Anthropic API Key)",
+          "default": ["claude-sonnet-4-5", "claude-haiku-4-5"]
+        },
+        "contextSync.openaiModels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "OpenAI model IDs offered in the model picker once an API key is stored (ContextSync: Set OpenAI API Key)",
+          "default": ["gpt-4o", "gpt-4o-mini"]
         }
       }
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
     "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.19.41",
-    "@types/vscode": "^1.90.0",
+    "@types/vscode": "1.90.0",
     "typescript": "^6.0.3"
   }
 }
