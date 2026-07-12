@@ -6,6 +6,10 @@ tsconfig.json
 
 #build output
 *.tsbuildinfo
+out/test/
+
+# ci
+.github/
 
 # runtime files
 node_modules/
@@ -24,7 +28,7 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# unsed env (for now)
+# unused env (for now)
 .env
 .env.local
 
