@@ -279,6 +279,7 @@
  <select id="model-select" title="Select Copilot model">
  <option value="">Loading models…</option>
  </select>
+ <button class="icon-btn" id="refresh-models-btn" title="Refresh available models">↻ Models</button>
       <div id="sync-badge" title="Click to see loaded context files">
         <span id="sync-dot"></span>
         <span id="sync-label">Starting…</span>
@@ -333,7 +334,7 @@
       const savedState = vscode.getState();
       if (savedState && Array.isArray(savedState.messages) && savedState.messages.length) {
         savedState.messages.forEach(renderMessage);
-        vscode.postMessage({ type: 'restoreSession', messages: savedState.messages, sessionId: savedState.sessionId });
+        vscode.postMessage({ type: 'restoreSession', messages: savedState.messages, sessionId: savedState.sessionId, destination: savedState.destination });
       }
     } catch (e) {
       // corrupted state must never block the panel from booting
@@ -355,7 +356,7 @@
 
     function clearSavedMessages() {
       const s = vscode.getState() || {};
-      vscode.setState({ sessionId: s.sessionId, messages: [] });
+      vscode.setState({ sessionId: s.sessionId, destination: s.destination, selectedModel: s.selectedModel, messages: [] });
     }
 
     function escapeHtml(str) {
@@ -366,8 +367,13 @@
         .replace(/"/g, '&quot;');
     }
 
+    document.getElementById('refresh-models-btn').addEventListener('click', () => vscode.postMessage({ type: 'requestModels' }));
+
     modelSelect.addEventListener('change', () => {
       const modelId = modelSelect.value;
+      const state = vscode.getState() || { messages: [] };
+      state.selectedModel = modelId;
+      vscode.setState(state);
       vscode.postMessage({ type: 'setModel', modelId });
     });
 
@@ -386,6 +392,8 @@
         return `<option value="${safeId}" ${i === 0 ? 'selected' : ''}>${safeName}</option>`;
       }).join('');
 
+      const preferred = (vscode.getState() || {}).selectedModel;
+      if (availableModels.some(m => m.id === preferred)) modelSelect.value = preferred;
       modelSelect.disabled = false;
 
       vscode.postMessage({ type: 'setModel', modelId: modelSelect.value });
@@ -420,7 +428,7 @@
 
     function sendMessage() {
       const content = inputEl.value.trim();
-      if (!content) return;
+      if (!content || sendBtn.disabled) return;
       inputEl.value = '';
       inputEl.style.height = '36px';
       vscode.postMessage({ type: 'sendMessage', content });
@@ -462,17 +470,19 @@
       }
 
       if (msg.type === 'qualityGateRejected') {
-        appendSystemMessage('💬 Chat not saved — not technically useful enough yet. Keep discussing or use Force Save.');
+        appendSystemMessage('💬 Some conversation content was not saved by the quality gate. Keep discussing or use Force Save.');
       }
 
       if (msg.type === 'sessionReset') {
         clearSavedMessages();
+        messagesEl.replaceChildren();
         appendSystemMessage('─── New session started ───');
       }
 
       if (msg.type === 'sessionInfo') {
         const s = vscode.getState() || { messages: [] };
         s.sessionId = msg.id;
+        s.destination = msg.destination;
         vscode.setState(s);
       }
 
@@ -534,7 +544,6 @@
     }
 
     vscode.postMessage({ type: 'ready' });
-    vscode.postMessage({ type: 'requestModels' });
   </script>
 </body>
 </html>

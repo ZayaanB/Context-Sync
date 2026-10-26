@@ -4,281 +4,270 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { ChatHandler } from './ChatHandler';
 import { ContextManager } from '../context/ContextManager';
-import { ChatMessage, ChatSession, WebviewMessage, CopilotModel } from '../types';
+import { ChatMessage, ChatSession, WebviewMessage } from '../types';
 import { MarkdownExporter } from '../markdown/MarkdownExporter';
+import { PendingExport, PendingExports } from './PendingExports';
 
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 const EXPORT_DEBOUNCE_MS = 2 * 60 * 1000;
-
+// Legacy global recovery data is deliberately retained: its original vault is unknown.
 export const PENDING_SESSION_KEY = 'contextSync.pendingSession';
 
 export class ChatPanel {
   public static currentPanel: ChatPanel | undefined;
-  private readonly _panel: vscode.WebviewPanel;
+  private static _closing = new Set<Promise<void>>();
+  private static _exports: Promise<void> = Promise.resolve();
   private readonly _handler: ChatHandler;
   private readonly _exporter: MarkdownExporter;
-  private readonly _memento: vscode.Memento;
   private _session: ChatSession;
-  private _privacyMode: boolean = false;
+  private _destination: string;
+  private _privacyMode = false;
   private _inactivityTimer?: NodeJS.Timeout;
   private _exportTimer?: NodeJS.Timeout;
-  private _exportPromise?: Promise<void>;
   private _activeRequest?: vscode.CancellationTokenSource;
-  private _busy: boolean = false;
-  private _lastExportedCount: number = 0;
   private _disposables: vscode.Disposable[] = [];
-  private _disposed: boolean = false;
+  private _disposed = false;
 
-  public static createOrShow(extensionUri: vscode.Uri, contextManager: ContextManager, memento: vscode.Memento, secrets: vscode.SecretStorage) {
+  public static createOrShow(extensionUri: vscode.Uri, manager: ContextManager, pending: PendingExports, secrets: vscode.SecretStorage) {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
-    if (ChatPanel.currentPanel) { ChatPanel.currentPanel._panel.reveal(column); return; }
+    if (this.currentPanel) { this.currentPanel._panel.reveal(column); return; }
     const panel = vscode.window.createWebviewPanel('contextSyncChat', 'ContextSync Chat', column, {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'src', 'webview')],
-      retainContextWhenHidden: true,
+      enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'src', 'webview')], retainContextWhenHidden: true,
     });
-    ChatPanel.currentPanel = new ChatPanel(panel, extensionUri, contextManager, memento, secrets);
+    this.currentPanel = new ChatPanel(panel, extensionUri, manager, pending, secrets);
   }
 
-  // rebuild a panel restored by the webview serializer
-  public static revive(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, contextManager: ContextManager, memento: vscode.Memento, secrets: vscode.SecretStorage) {
-    panel.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'src', 'webview')],
-    };
-    ChatPanel.currentPanel = new ChatPanel(panel, extensionUri, contextManager, memento, secrets);
+  public static revive(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, manager: ContextManager, pending: PendingExports, secrets: vscode.SecretStorage) {
+    panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'src', 'webview')] };
+    this.currentPanel = new ChatPanel(panel, extensionUri, manager, pending, secrets, false);
   }
 
-  public static notifyContextUpdated(contextManager: ContextManager) {
-    if (!ChatPanel.currentPanel) return;
-    ChatPanel.currentPanel._postMessage({
-      type: 'syncStatus',
-      status: 'Synced',
-      fileCount: contextManager.fileCount,
-      fileNames: contextManager.getLoadedFileNames(),
-    });
+  public static notifyContextUpdated(manager: ContextManager) {
+    this.currentPanel?._postMessage({ type: 'syncStatus', status: 'Synced', fileCount: manager.fileCount, fileNames: manager.getLoadedFileNames() });
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, contextManager: ContextManager, memento: vscode.Memento, secrets: vscode.SecretStorage) {
-    this._panel = panel;
-    this._memento = memento;
-    this._handler = new ChatHandler(contextManager, secrets);
-    this._exporter = new MarkdownExporter(contextManager, secrets);
+  public static async flushExports(): Promise<void> {
+    await Promise.all(this._closing);
+    await this._exports;
+  }
+  public static queueExport(run: () => Promise<void>): Promise<void> {
+    const work = this._exports.then(run);
+    this._exports = work.catch(err => console.error('ContextSync: export failed', err));
+    return work;
+  }
+
+  private constructor(private readonly _panel: vscode.WebviewPanel, extensionUri: vscode.Uri, manager: ContextManager, private readonly _pending: PendingExports, secrets: vscode.SecretStorage, private readonly _allowModelSelection = true) {
+    this._handler = new ChatHandler(manager, secrets);
+    this._exporter = new MarkdownExporter(manager, secrets);
     this._session = this._createNewSession();
+    this._destination = this._configuredFolder();
     this._panel.webview.html = this._getHtml(extensionUri);
     this._panel.webview.onDidReceiveMessage((msg: WebviewMessage) => this._handleWebviewMessage(msg), null, this._disposables);
     this._panel.onDidDispose(() => this._dispose(), null, this._disposables);
   }
 
+  private _configuredFolder(): string {
+    const folder = vscode.workspace.getConfiguration('contextSync').get<string>('syncFolder') ?? '';
+    return folder ? path.resolve(folder) : '';
+  }
+
   private async _handleWebviewMessage(message: WebviewMessage) {
     try {
-      // type check payloads from the webview
-      if (message.type === 'sendMessage')      { if (typeof message.content === 'string' && message.content.trim()) await this._handleUserMessage(message.content); }
-      else if (message.type === 'newSession')  { await this._startNewSession(); }
-      else if (message.type === 'forceSave')   { await this._forceSave(); }
-      else if (message.type === 'setPrivacy')  { this._privacyMode = message.enabled === true; }
-      else if (message.type === 'setModel')    { if (typeof message.modelId === 'string') this._session.selectedModel = message.modelId; }
-      else if (message.type === 'restoreSession') { this._restoreSession(message.messages, message.sessionId); }
-      else if (message.type === 'requestModels') { await this._sendModelList(); }
+      if (!message || typeof message !== 'object' || this._disposed) return;
+      if (message.type === 'sendMessage') {
+        if (typeof message.content === 'string' && message.content.trim()) await this._handleUserMessage(message.content);
+      } else if (message.type === 'newSession') await this._startNewSession();
+      else if (message.type === 'forceSave') await this._forceSave();
+      else if (message.type === 'setPrivacy') {
+        if (this._privacyMode !== (message.enabled === true)) await this._startNewSession(message.enabled === true);
+      } else if (message.type === 'setModel') {
+        if (typeof message.modelId === 'string') this._session.selectedModel = message.modelId;
+      } else if (message.type === 'restoreSession') this._restoreSession(message.messages, message.sessionId, message.destination);
+      else if (message.type === 'requestModels') await this._sendModelList(true);
       else if (message.type === 'ready') {
-        this._postMessage({ type: 'syncStatus', status: 'Loaded', fileCount: this._handler.contextManager.fileCount, fileNames: this._handler.contextManager.getLoadedFileNames() });
-        this._postMessage({ type: 'sessionInfo', id: this._session.id });
+        ChatPanel.notifyContextUpdated(this._handler.contextManager);
+        this._postMessage({ type: 'sessionInfo', id: this._session.id, destination: this._destination });
         this._validateConfig();
         await this._sendModelList();
       }
-    } catch (err) {
-      this._postMessage({ type: 'error', message: String(err) });
-    }
+    } catch (err) { this._postMessage({ type: 'error', message: String(err) }); }
   }
 
-  private async _sendModelList() {
-    const models = await this._handler.getAvailableModels();
-    this._postMessage({ type: 'modelList', models });
+  private async _sendModelList(allowSelection = this._allowModelSelection) {
+    this._postMessage({ type: 'modelList', models: await this._handler.getAvailableModels(allowSelection) });
   }
 
   private async _handleUserMessage(content: string) {
-    if (this._busy) return;
-    this._busy = true;
-    this._resetInactivityTimer();
-    const userMsg = { role: 'user' as const, content, timestamp: new Date().toISOString(), ...(this._privacyMode ? { private: true } : {}) };
-    this._session.messages.push(userMsg);
-    this._postMessage({ type: 'addMessage', message: userMsg });
+    if (this._activeRequest || this._disposed) return;
+    this._destination = this._pending.destinationFor(this._session.id) || this._destination;
+    if (!this._destination) this._destination = this._configuredFolder();
+    if (this._destination !== this._configuredFolder()) await this._startNewSession();
+    if (this._activeRequest || this._disposed) return;
+    const session = this._session;
+    const privateTurn = this._privacyMode;
+    const request = new vscode.CancellationTokenSource();
+    this._activeRequest = request;
+    const user: ChatMessage = { role: 'user', content, timestamp: new Date().toISOString(), private: privateTurn };
+    session.messages.push(user);
+    this._postMessage({ type: 'addMessage', message: user });
     this._postMessage({ type: 'setLoading', loading: true });
-    this._activeRequest = new vscode.CancellationTokenSource();
+    this._resetInactivityTimer();
     try {
-      const reply = await this._handler.sendMessage(this._session, this._activeRequest.token);
-      const assistantMsg = { role: 'assistant' as const, content: reply, timestamp: new Date().toISOString(), ...(this._privacyMode ? { private: true } : {}) };
-      this._session.messages.push(assistantMsg);
-      this._postMessage({ type: 'addMessage', message: assistantMsg });
-      this._stashPendingSession();
-      this._scheduleExport();
+      await this._stashPendingSession();
+      if (request.token.isCancellationRequested || this._session !== session || this._disposed) return;
+      const reply = await this._handler.sendMessage(session, request.token);
+      if (request.token.isCancellationRequested || this._session !== session || this._disposed) return;
+      const assistant: ChatMessage = { role: 'assistant', content: reply, timestamp: new Date().toISOString(), private: privateTurn };
+      session.messages.push(assistant);
+      this._postMessage({ type: 'addMessage', message: assistant });
+      await this._stashPendingSession();
+      if (!privateTurn && this._session === session && !this._disposed) this._scheduleExport();
     } catch (err) {
-      if (err instanceof vscode.CancellationError) return;
-      vscode.window.showErrorMessage(`ContextSync: ${err}`);
-      this._postMessage({ type: 'error', message: String(err) });
+      if (!(err instanceof vscode.CancellationError) && !request.token.isCancellationRequested && this._session === session && !this._disposed) {
+        this._postMessage({ type: 'error', message: String(err) });
+      }
     } finally {
-      this._activeRequest.dispose();
-      this._activeRequest = undefined;
-      this._busy = false;
-      this._resetInactivityTimer();
-      this._postMessage({ type: 'setLoading', loading: false });
+      request.dispose();
+      if (this._activeRequest === request) {
+        this._activeRequest = undefined;
+        if (!this._disposed) this._resetInactivityTimer();
+        this._postMessage({ type: 'setLoading', loading: false });
+      }
     }
   }
 
-  // restore chat history persisted by the webview after a window reload
-  private _restoreSession(messages: ChatMessage[], sessionId?: string) {
-    if (!Array.isArray(messages) || this._session.messages.length) return;
-    const valid = messages.filter(
-      (m): m is ChatMessage =>
-        !!m &&
-        (m.role === 'user' || m.role === 'assistant') &&
-        typeof m.content === 'string' &&
-        typeof m.timestamp === 'string'
-    );
-    this._session.messages = valid;
-    // adopt the old id only if it belongs to the current user
-    if (
-      typeof sessionId === 'string' &&
-      /^[A-Za-z0-9_-]{1,64}$/.test(sessionId) &&
-      sessionId.startsWith(`${this._session.username}_`)
-    ) {
-      this._session.id = sessionId;
-    }
+  private _restoreSession(messages: ChatMessage[], sessionId?: string, destination?: string) {
+    if (!Array.isArray(messages) || this._session.messages.length || typeof sessionId !== 'string') return;
+    const entry = this._pending.get(sessionId);
+    // Durable state is authoritative. Webview state alone cannot reassign an old session to a new vault.
+    if (entry && entry.destination === this._destination && entry.session.username === this._session.username) {
+      this._session = entry.session;
+    } else if (!entry && destination === this._destination) {
+      const valid = messages.filter(m => m && !m.private && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && typeof m.timestamp === 'string');
+      this._session.messages = valid.map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp }));
+      // A webview snapshot proves availability, not successful export. Retain it for retry.
+      this._session.exportedMessageCount = 0;
+    } else this._postMessage({ type: 'sessionReset' });
   }
 
-  // keep an off-panel copy so a crash or shutdown cannot lose the session
-  private _stashPendingSession() {
-    const shareable = this._session.messages.filter((m) => !m.private);
-    if (shareable.length < 2) return;
-    // exporter reads only the last 10 messages so bound the stash
-    void this._memento.update(PENDING_SESSION_KEY, { ...this._session, messages: shareable.slice(-10) });
+  private _stashPendingSession(): Promise<void> {
+    this._destination = this._pending.destinationFor(this._session.id) || this._destination || this._configuredFolder();
+    return this._pending.put(this._session, this._destination);
   }
 
-  // debounce export so each turn does not trigger llm calls
   private _scheduleExport() {
     if (this._exportTimer) clearTimeout(this._exportTimer);
-    this._exportTimer = setTimeout(() => { void this._exportSession(); }, EXPORT_DEBOUNCE_MS);
+    this._exportTimer = setTimeout(() => { this._exportTimer = undefined; void this._exportSession(); }, EXPORT_DEBOUNCE_MS);
   }
 
-  // single-flight so concurrent triggers never double-export
-  private _exportSession(notifyRejection = true): Promise<void> {
-    if (this._exportPromise) return this._exportPromise;
-    this._exportPromise = this._doExport(notifyRejection).finally(() => {
-      this._exportPromise = undefined;
-    });
-    return this._exportPromise;
+  private _exportSession(force = false): Promise<void> {
+    if (this._activeRequest && !this._activeRequest.token.isCancellationRequested) return ChatPanel._exports;
+    if (this._exportTimer) clearTimeout(this._exportTimer);
+    this._exportTimer = undefined;
+    const entry = this._pending.get(this._session.id);
+    if (!entry || entry.session.messages.length < 2 || !this._destination) return ChatPanel._exports;
+    return this._enqueueExport(entry, force);
   }
 
-  private async _doExport(notifyRejection: boolean): Promise<void> {
-    if (this._exportTimer) { clearTimeout(this._exportTimer); this._exportTimer = undefined; }
-    const syncFolder = vscode.workspace.getConfiguration('contextSync').get<string>('syncFolder') ?? '';
-    if (!syncFolder || this._privacyMode || this._session.messages.length < 2) return;
-    // skip llm spend when nothing new has been said since the last export
-    if (this._session.messages.length === this._lastExportedCount) return;
-    try {
-      const messageCount = this._session.messages.length;
-      const filePath = await this._exporter.exportSession(this._session, syncFolder);
-      void this._memento.update(PENDING_SESSION_KEY, undefined);
-      if (filePath) {
-        this._lastExportedCount = messageCount;
+  private _enqueueExport(entry: PendingExport, force: boolean): Promise<void> {
+    const run = async () => {
+      const current = this._pending.get(entry.session.id);
+      if (!current || !entry.destination) return;
+      // Preserve progress acknowledged by an earlier serialized export.
+      entry.session.exportedMessageCount = Math.max(entry.session.exportedMessageCount ?? 0, current.session.exportedMessageCount ?? 0);
+      const file = await this._exporter.exportSession(entry.session, entry.destination, force, !force);
+      if (file) {
+        await this._pending.acknowledge(entry.session.id, entry.revision);
+        if (this._session.id === entry.session.id) this._session.exportedMessageCount = entry.revision;
         this._postMessage({ type: 'syncStatus', status: 'Saved', fileCount: this._handler.contextManager.fileCount, fileNames: this._handler.contextManager.getLoadedFileNames() });
-      } else if (notifyRejection) {
-        this._postMessage({ type: 'qualityGateRejected' });
-      }
-    } catch (err) {
+      } else if (force) throw new Error('No export was produced. The conversation remains queued.');
+      else this._postMessage({ type: 'qualityGateRejected' });
+    };
+    const work = ChatPanel.queueExport(run);
+    return work.catch(err => {
       console.error('ContextSync: export failed', err);
-    }
+      this._postMessage({ type: 'error', message: `Export failed; conversation retained for retry: ${String(err)}` });
+    });
   }
 
-  // flush a pending export on shutdown
   public async flushPendingExport(): Promise<void> {
-    if (!this._exportTimer) return;
-    await this._exportSession(false);
+    await this._stashPendingSession();
+    await this._exportSession();
+    await this._pending.flush();
   }
 
-  private async _startNewSession() {
-    // keep the stash if the export failed
-    await this._exportSession(false);
+  private async _startNewSession(privacy = this._privacyMode) {
+    const old = this._session;
+    const destination = this._destination;
+    this._activeRequest?.cancel();
+    this._activeRequest = undefined;
+    if (this._exportTimer) clearTimeout(this._exportTimer);
+    this._exportTimer = undefined;
+    this._privacyMode = privacy;
     this._session = this._createNewSession();
-    this._lastExportedCount = 0;
+    this._session.selectedModel = old.selectedModel;
+    this._destination = this._configuredFolder();
+    this._postMessage({ type: 'setLoading', loading: false });
     this._postMessage({ type: 'sessionReset' });
-    this._postMessage({ type: 'sessionInfo', id: this._session.id });
+    this._postMessage({ type: 'sessionInfo', id: this._session.id, destination: this._destination });
+    this._resetInactivityTimer();
+    await this._pending.put(old, destination);
+    const entry = this._pending.get(old.id);
+    if (entry && entry.session.messages.length >= 2) void this._enqueueExport(entry, false);
   }
 
   private async _forceSave() {
-    if (this._privacyMode) { this._postMessage({ type: 'error', message: 'Privacy mode is on — turn it off to save this conversation.' }); return; }
-    const syncFolder = vscode.workspace.getConfiguration('contextSync').get<string>('syncFolder') ?? '';
-    if (!syncFolder) { this._postMessage({ type: 'error', message: 'No sync folder configured.' }); return; }
-    if (this._session.messages.filter((m) => !m.private).length < 2) { this._postMessage({ type: 'error', message: 'Nothing to save yet.' }); return; }
-    if (this._exportTimer) { clearTimeout(this._exportTimer); this._exportTimer = undefined; }
-    // claim the single flight slot so exports never overlap
-    if (this._exportPromise) await this._exportPromise;
-    this._exportPromise = (async () => {
-      const messageCount = this._session.messages.length;
-      const filePath = await this._exporter.exportSession(this._session, syncFolder, true);
-      if (filePath) {
-        this._lastExportedCount = messageCount;
-        void this._memento.update(PENDING_SESSION_KEY, undefined);
-        this._postMessage({ type: 'syncStatus', status: 'Force saved', fileCount: this._handler.contextManager.fileCount, fileNames: this._handler.contextManager.getLoadedFileNames() });
-      }
-    })().finally(() => {
-      this._exportPromise = undefined;
-    });
-    await this._exportPromise;
+    if (this._privacyMode) throw new Error('Turn privacy mode off before saving.');
+    if (this._activeRequest && !this._activeRequest.token.isCancellationRequested) throw new Error('Wait for the current reply before saving.');
+    const session = this._session;
+    await this._stashPendingSession();
+    if (this._session !== session || this._privacyMode || this._disposed) return;
+    if (!this._destination) throw new Error('No sync folder configured. The conversation is retained for recovery.');
+    if (this._session.messages.filter(m => !m.private).length < 2) throw new Error('Nothing to save yet.');
+    await this._exportSession(true);
   }
 
   private _resetInactivityTimer() {
     if (this._inactivityTimer) clearTimeout(this._inactivityTimer);
     this._inactivityTimer = setTimeout(() => {
-      if (this._disposed) return;
-      void this._startNewSession().then(() => {
-        this._postMessage({ type: 'inactivityReset', message: 'New session started after 30 minutes of inactivity.' });
-      });
+      if (this._disposed || this._activeRequest) return;
+      void this._startNewSession().catch(err => console.error('ContextSync: session reset failed', err));
     }, INACTIVITY_TIMEOUT_MS);
   }
 
   private _validateConfig() {
-    const config = vscode.workspace.getConfiguration('contextSync');
     const warnings: string[] = [];
+    const config = vscode.workspace.getConfiguration('contextSync');
     if (!config.get<string>('username')) warnings.push('contextSync.username is not set.');
     if (!config.get<string>('syncFolder')) warnings.push('contextSync.syncFolder is not set.');
+    if (this._pending.list().length) warnings.push('Unsaved conversations can be retried with ContextSync: Recover Pending Exports.');
     if (warnings.length) this._postMessage({ type: 'configWarning', warnings });
   }
 
-  private _postMessage(message: object) {
-    if (this._disposed) return;
-    this._panel.webview.postMessage(message);
-  }
-
+  private _postMessage(message: object) { if (!this._disposed) void this._panel.webview.postMessage(message); }
   private _createNewSession(): ChatSession {
-    const config = vscode.workspace.getConfiguration('contextSync');
-
-    // sanitise username to prevent path traversal via filenames
-    const rawUsername = config.get<string>('username') || 'user';
-    const username = rawUsername.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 32);
-
-    const date = new Date().toISOString().split('T')[0];
-    const uid = crypto.randomBytes(4).toString('hex');
-
-    return { id: `${username}_${date}_${uid}`, username, messages: [], startedAt: new Date().toISOString() };
+    const raw = vscode.workspace.getConfiguration('contextSync').get<string>('username') || 'user';
+    const username = raw.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 32);
+    const date = new Date().toISOString();
+    return { id: `${username}_${date.split('T')[0]}_${crypto.randomBytes(8).toString('hex')}`, username, messages: [], startedAt: date };
   }
-
   private _getHtml(extensionUri: vscode.Uri): string {
-    const nonce = crypto.randomBytes(16).toString('hex');
-    const htmlPath = path.join(extensionUri.fsPath, 'src', 'webview', 'chat.html');
-    const html = fs.readFileSync(htmlPath, 'utf-8');
-    return html.replace(/{{NONCE}}/g, nonce);
+    return fs.readFileSync(path.join(extensionUri.fsPath, 'src', 'webview', 'chat.html'), 'utf-8').replace(/{{NONCE}}/g, crypto.randomBytes(16).toString('hex'));
+  }
+  public shutdown(): void {
+    this._dispose();
+    this._panel.dispose();
   }
 
   private _dispose() {
-    const hadPendingExport = !!this._exportTimer;
+    if (this._disposed) return;
     this._disposed = true;
     this._activeRequest?.cancel();
     if (this._inactivityTimer) clearTimeout(this._inactivityTimer);
-    // disarm the timer so it cannot fire after dispose
-    if (this._exportTimer) { clearTimeout(this._exportTimer); this._exportTimer = undefined; }
-    if (hadPendingExport) void this._exportSession(false);
-    ChatPanel.currentPanel = undefined;
-    this._disposables.forEach((d) => d.dispose());
+    const closing = this.flushPendingExport().catch(err => console.error('ContextSync: closing export failed', err));
+    ChatPanel._closing.add(closing);
+    void closing.finally(() => ChatPanel._closing.delete(closing));
+    if (ChatPanel.currentPanel === this) ChatPanel.currentPanel = undefined;
+    this._disposables.forEach(d => d.dispose());
   }
 }

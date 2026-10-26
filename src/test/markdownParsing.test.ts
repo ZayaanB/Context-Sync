@@ -89,11 +89,21 @@ test('extractWikilinks finds all links', () => {
   assert.deepEqual(extractWikilinks('see [[a]] and [[b]]'), ['a', 'b']);
 });
 
-test('sanitiseField strips injectable characters and caps length', () => {
-  assert.equal(sanitiseField('a`<b>`{c}[d]\\e\n\nf', 100), 'abcde f');
+test('sanitiseField preserves technical notation and caps length', () => {
+  assert.equal(sanitiseField('a`<b>`{c}[d]\\e\n\nf', 100), 'a`<b>`{c}[d]\\e f');
   assert.equal(sanitiseField('x'.repeat(50), 10).length, 10);
 });
 
 test('tokenise drops stop words and short words', () => {
   assert.deepEqual(tokenise('How should we use the JWT auth?'), ['jwt', 'auth']);
+});
+
+test('UTF-8 BOM and technical or multilingual tags survive synced Markdown', () => {
+  const file = parseContextMarkdown('\uFEFF' + SAMPLE.replace('tags: [auth, backend, TypeScript]', 'tags: ["c++", "c#", "数据库"]'), 'a.md', new Date());
+  assert.deepEqual(file?.tags, ['c++', 'c#', '数据库']);
+  assert.ok(file?.tokens.includes('c#'));
+});
+
+test('frontmatter terminators must occupy the full line', () => {
+  assert.equal(parseContextMarkdown('---\ntopic: test\n---invalid', 'a.md', new Date()), null);
 });

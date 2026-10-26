@@ -14,6 +14,7 @@ export interface ChatSession {
   topic?: string;
   tags?: string[];
   selectedModel?: string;
+  exportedMessageCount?: number;
 }
 
 export interface CopilotModel {
@@ -43,7 +44,7 @@ export type WebviewMessage =
   | { type: 'forceSave' }
   | { type: 'setPrivacy'; enabled: boolean }
   | { type: 'setModel'; modelId: string }
-  | { type: 'restoreSession'; messages: ChatMessage[]; sessionId?: string }
+  | { type: 'restoreSession'; messages: ChatMessage[]; sessionId?: string; destination?: string }
   | { type: 'requestModels' }
   | { type: 'ready' };
 
@@ -54,7 +55,7 @@ export type ExtensionMessage =
   | { type: 'syncStatus'; status: string; fileCount: number; fileNames: string[] }
   | { type: 'qualityGateRejected' }
   | { type: 'sessionReset' }
-  | { type: 'sessionInfo'; id: string }
+  | { type: 'sessionInfo'; id: string; destination: string }
   | { type: 'inactivityReset'; message: string }
   | { type: 'configWarning'; warnings: string[] }
   | { type: 'modelList'; models: CopilotModel[] }

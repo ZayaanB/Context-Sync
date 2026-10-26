@@ -38,3 +38,7 @@ Thumbs.db
 # backups
 *.bak
 *.backup
+# development-only helpers and personal notes
+scripts/
+docs/learning-journal.md
+docs/context-sync-interview-guide.md

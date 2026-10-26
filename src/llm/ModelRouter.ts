@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ChatTurn } from './types';
+import { fitPrompt, modelInputBudget } from './promptBudget';
 import { completeAnthropic, completeOpenAI } from './directClients';
 import { selectVsCodeModel } from '../utils/ModelSelector';
 import { CopilotModel } from '../types';
@@ -10,19 +11,24 @@ export const ANTHROPIC_KEY_SECRET = 'contextSync.anthropicApiKey';
 export const OPENAI_KEY_SECRET = 'contextSync.openaiApiKey';
 
 const DEFAULT_CHAT_MAX_TOKENS = 4096;
+const knownModels = new Map<string, vscode.LanguageModelChat>();
+let modelAccess: vscode.LanguageModelAccessInformation | undefined;
+export function setModelAccessInformation(access: vscode.LanguageModelAccessInformation): void { modelAccess = access; }
 
 export interface CompleteOptions {
+  background?: boolean;
   maxTokens?: number;
   token?: vscode.CancellationToken;
 }
 
 // list every vscode lm model plus direct api models when a key is stored
-export async function listAllModels(secrets: vscode.SecretStorage): Promise<CopilotModel[]> {
+export async function listAllModels(secrets: vscode.SecretStorage, allowSelection = true): Promise<CopilotModel[]> {
   const models: CopilotModel[] = [];
 
   try {
-    const lmModels = await vscode.lm.selectChatModels({});
+    const lmModels = allowSelection ? await vscode.lm.selectChatModels({}) : [...knownModels.values()];
     for (const m of lmModels) {
+      knownModels.set(m.id, m);
       models.push({ id: m.id, name: `${m.name} · ${m.vendor}`, vendor: m.vendor, family: m.family });
     }
   } catch {
@@ -56,7 +62,12 @@ export async function completeWithModel(
   opts: CompleteOptions,
   secrets: vscode.SecretStorage
 ): Promise<string> {
+  if (opts.token?.isCancellationRequested) throw new vscode.CancellationError();
   const maxTokens = opts.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS;
+  const directBudget = vscode.workspace.getConfiguration('contextSync').get<number>('maxInputTokens') ?? 12000;
+  if (modelId?.startsWith(ANTHROPIC_PREFIX) || modelId?.startsWith(OPENAI_PREFIX)) {
+    turns = await fitPrompt(turns, directBudget);
+  }
 
   if (modelId?.startsWith(ANTHROPIC_PREFIX)) {
     const apiKey = await secrets.get(ANTHROPIC_KEY_SECRET);
@@ -82,13 +93,18 @@ async function completeVsCodeLm(
   turns: ChatTurn[],
   opts: CompleteOptions
 ): Promise<string> {
-  const models = await selectVsCodeModel(modelId);
+  const models = opts.background
+    ? [...knownModels.values()].filter(model => (!modelId || model.id === modelId) && modelAccess?.canSendRequest(model) === true)
+    : await selectVsCodeModel(modelId);
   if (!models.length) {
     throw new Error(
       'No language model available. Sign in to GitHub Copilot, or store an Anthropic/OpenAI API key via the ContextSync commands.'
     );
   }
 
+  knownModels.set(models[0].id, models[0]);
+  turns = await fitPrompt(turns, modelInputBudget(models[0].maxInputTokens, opts.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS), async t => models[0].countTokens(
+    t.role === 'user' ? vscode.LanguageModelChatMessage.User(t.content) : vscode.LanguageModelChatMessage.Assistant(t.content), opts.token));
   const messages = turns.map((t) =>
     t.role === 'user'
       ? vscode.LanguageModelChatMessage.User(t.content)

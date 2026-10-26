@@ -8,7 +8,7 @@ export async function selectVsCodeModel(
     // user selected model first
     if (preferredModelId) {
       const byId = await vscode.lm.selectChatModels({ id: preferredModelId });
-      if (byId.length) return byId;
+      return byId;
     }
 
     // fall back to the default copilot family
