@@ -25,3 +25,7 @@ npm-debug.log*
 # backups
 *.bak
 *.backup
+
+# personal learning notes
+docs/learning-journal.md
+docs/context-sync-interview-guide.md

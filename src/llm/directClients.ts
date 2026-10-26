@@ -9,6 +9,7 @@ const REQUEST_TIMEOUT_MS = 60 * 1000;
 // tie an abort signal to the vscode cancellation token plus a hard timeout
 function makeSignal(token?: vscode.CancellationToken): { signal: AbortSignal; dispose: () => void } {
   const controller = new AbortController();
+  if (token?.isCancellationRequested) controller.abort();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const sub = token?.onCancellationRequested(() => controller.abort());
   return {
@@ -59,6 +60,7 @@ export async function completeAnthropic(
   maxTokens: number,
   token?: vscode.CancellationToken
 ): Promise<string> {
+  if (token?.isCancellationRequested) throw new vscode.CancellationError();
   const { signal, dispose } = makeSignal(token);
   try {
     const res = await fetch(ANTHROPIC_API_URL, {
@@ -99,6 +101,7 @@ export async function completeOpenAI(
   maxTokens: number,
   token?: vscode.CancellationToken
 ): Promise<string> {
+  if (token?.isCancellationRequested) throw new vscode.CancellationError();
   const { signal, dispose } = makeSignal(token);
   try {
     const res = await fetch(OPENAI_API_URL, {

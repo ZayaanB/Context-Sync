@@ -2,15 +2,15 @@ import { ContextFile } from '../types';
 
 export function parseContextMarkdown(raw: string, filename: string, modifiedAt: Date): ContextFile | null {
   // normalise crlf so windows synced files parse
-  const text = raw.replace(/\r\n/g, '\n');
+  const text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
 
-  const frontmatterMatch = text.match(/^---\n([\s\S]*?)\n---/);
+  const frontmatterMatch = text.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
   if (!frontmatterMatch) return null;
 
   const fm = parseFrontmatter(frontmatterMatch[1]);
   const body = text.slice(frontmatterMatch[0].length).trim();
 
-  const topic = sanitiseField((fm['topic'] ?? '').replace(/^"|"$/g, ''), 120);
+  const topic = sanitiseField(decodeTopic(fm['topic'] ?? ''), 120);
   const tags = parseArray(fm['tags'] ?? '');
   const summary = sanitiseField(extractSection(body, 'Summary'), 300);
   const keyDecisions = extractList(body, 'Key Decisions').map((d) => sanitiseField(d, 120));
@@ -25,7 +25,7 @@ export function parseContextMarkdown(raw: string, filename: string, modifiedAt: 
     keyDecisions,
     links,
     modifiedAt,
-    tokens: [...tags, ...tokenise(topic), ...tokenise(summary)],
+    tokens: [...new Set(tokenise([...tags, topic, summary, ...keyDecisions].join(' ')))],
   };
 }
 
@@ -44,7 +44,7 @@ export function parseArray(value: string): string[] {
   return value
     .replace(/[\[\]]/g, '')
     .split(',')
-    .map((s) => s.trim().toLowerCase().replace(/[^a-z0-9_\- ]/g, '').slice(0, 40))
+    .map((s) => s.trim().toLowerCase().replace(/[^\p{L}\p{N}_+#\- ]/gu, '').slice(0, 40))
     .filter(Boolean)
     .slice(0, 10);
 }
@@ -65,14 +65,26 @@ export function extractWikilinks(body: string): string[] {
   return (body.match(/\[\[([^\]]+)\]\]/g) ?? []).map((m) => m.replace(/\[\[|\]\]/g, ''));
 }
 
-// strip prompt-injectable characters and cap length
+// Plain text normalization is not a prompt-injection security boundary.
 export function sanitiseField(text: string, maxLen: number): string {
-  return text
-    .replace(/[`<>{}[\]\\]/g, '')
-    .replace(/\n+/g, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .slice(0, maxLen)
-    .trim();
+  return truncateText(text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim(), maxLen);
+}
+
+export function truncateText(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  if (maxLen <= 0) return '';
+  let end = maxLen - 1;
+  if (end > 0 && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
+  const prefix = text.slice(0, end);
+  const boundary = prefix.search(/\s+\S*$/u);
+  return (boundary > end / 2 ? prefix.slice(0, boundary) : prefix).trimEnd() + '…';
+}
+
+function decodeTopic(value: string): string {
+  if (value.startsWith('"')) {
+    try { const decoded: unknown = JSON.parse(value); if (typeof decoded === 'string') return decoded; } catch { /* accept legacy plain fields */ }
+  }
+  return value.replace(/^['"]|['"]$/g, '');
 }
 
 const STOP_WORDS = new Set([
@@ -84,7 +96,7 @@ const STOP_WORDS = new Set([
 export function tokenise(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^\p{L}\p{N}_+#-]+/gu, ' ')
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+    .filter((w) => (w.length > 2 || /[+#]|[^\x00-\x7f]/u.test(w)) && !STOP_WORDS.has(w));
 }

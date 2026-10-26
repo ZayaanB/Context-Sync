@@ -3,8 +3,9 @@
 > **Stop re-explaining your code to AI.** Collaborative context sharing for VS Code teams.
 
 ContextSync lets teams share AI conversation context automatically.
-Every chat is saved as a structured `.md` file, synced via OneDrive to your
-team's Obsidian vault, and injected as context into every team member's AI chats.
+Useful public conversations are saved as immutable structured `.md` segments,
+synced via OneDrive to your team's Obsidian vault, and retrieved when relevant
+to another team member's question.
 
 **Works with GitHub Copilot, Claude (Anthropic API), ChatGPT (OpenAI API), and any VS Code language model provider.**
 
@@ -51,7 +52,8 @@ npm run compile
 |---|---|---|
 | `contextSync.syncFolder` | Path to your OneDrive/Obsidian folder | `/Users/zayaan/OneDrive/team-context` |
 | `contextSync.username` | Your display name for file naming | `zayaan` |
-| `contextSync.maxContextFiles` | Max context files injected per request | `5` |
+| `contextSync.maxContextFiles` | Max relevant context files injected per request | `5` |
+| `contextSync.maxInputTokens` | Conservative input budget for direct API models; lower for smaller models | `12000` |
 | `contextSync.anthropicModels` | Anthropic models shown once a key is stored | `["claude-sonnet-4-5"]` |
 | `contextSync.openaiModels` | OpenAI models shown once a key is stored | `["gpt-4o"]` |
 
@@ -78,9 +80,30 @@ requires Copilot since it runs inside Copilot Chat).
 
 ---
 
+Privacy changes start a fresh session and cancel in-flight replies, preventing
+private history from influencing later public exports. Private content is not
+persisted. Public pending exports are stored per workspace with their original
+vault destination. Run **ContextSync: Recover Pending Exports** to retry after a
+failure or restart. Legacy recovery asks you to choose the original vault because
+older versions did not record its location.
+
+ContextSync runs in the local UI extension host, including with remote workspaces,
+so `syncFolder` refers to the local machine's OneDrive/Obsidian folder. Browser-only
+VS Code without a local Node extension host is not supported.
+
+VS Code model requests use the selected model's token counter. Direct API requests
+use a conservative UTF-8 byte budget, not an exact provider tokenizer. Older turns
+are dropped as complete exchanges; an oversized current message produces an error.
+Background exports only use VS Code models with existing consent. The **↻ Models**
+button explicitly refreshes model discovery after a panel is restored.
+
+---
+
 ## File Format
 
-Each chat session produces one `.md` file:
+A session produces content-addressed Markdown segments (`chat_<session>_<hash>.md`).
+Later exports preserve earlier segments, and retries reuse existing segments.
+Existing files from older versions remain readable. Example segment:
 
 ```md
 ---
