@@ -53,6 +53,10 @@ npm run compile
 | `contextSync.syncFolder` | Path to your OneDrive/Obsidian folder | `/Users/zayaan/OneDrive/team-context` |
 | `contextSync.username` | Your display name for file naming | `zayaan` |
 | `contextSync.maxContextFiles` | Max relevant context files injected per request | `5` |
+| `contextSync.retrievalMode` | `lexical` (default) or `hybrid` with weighted graph traversal | `"hybrid"` |
+| `contextSync.maxContextBytes` | Shared context block limit in UTF-8 bytes; model token checks remain separate | `4096` |
+| `contextSync.maxGraphDistance` | Maximum weighted query-to-note distance in hybrid mode; `0` disables expansion | `4` |
+| `contextSync.maxGraphNodes` | Maximum settled nodes per hybrid search; edge scans also have a hard bound | `200` |
 | `contextSync.maxInputTokens` | Conservative input budget for direct API models; lower for smaller models | `12000` |
 | `contextSync.anthropicModels` | Anthropic models shown once a key is stored | `["claude-sonnet-4-5"]` |
 | `contextSync.openaiModels` | OpenAI models shown once a key is stored | `["gpt-4o"]` |
@@ -99,6 +103,71 @@ button explicitly refreshes model discovery after a panel is restored.
 
 ---
 
+## Context retrieval
+
+Lexical mode ranks cached notes by distinct keyword overlap in tags, topics,
+summaries, and decisions, breaking ties by modification time and then filename.
+It injects matching facts with source names and returns no shared context when
+nothing matches. It remains the default.
+
+Enable hybrid retrieval in Settings:
+
+```json
+{
+  "contextSync.retrievalMode": "hybrid"
+}
+```
+
+Hybrid mode combines lexical ranking with multi-source Dijkstra shortest-path
+search over explicit `[[wikilinks]]`. Links work in both directions, including
+backlinks. Only notes already loaded from the flat sync folder are eligible;
+links never open files or URLs. Headings and aliases such as
+`[[chat_alice.md#Decision|Read more]]` resolve to the cached note.
+
+Each link costs `2 - Jaccard(tagsA, tagsB)`, so strongly overlapping tags cost
+less, with costs between 1 and 2. Up to three lexical seeds receive query-edge
+costs of `1 - score / bestScore`. Dijkstra finds minimum cumulative costs from
+that virtual query source. Selection tries the strongest lexical match first, and at most
+two linked supporting notes may use up to half the file slots. Remaining slots
+use lexical results. Graph results include their route (`via`) and distance.
+
+Default traversal limits are weighted distance 4, 200 settled nodes, and 4,000
+scanned edges. A manually edited note contributes at most its first 64 link
+entries. The graph index is built lazily and invalidated on cache changes;
+search bounds do not limit the one-time cost of indexing the loaded vault.
+Only settled shortest paths are returned when a traversal limit is reached.
+
+Both modes respect the file cap and UTF-8 byte cap, keeping complete JSON records
+and passages. Fields or notes that cannot fit may be omitted. The model adapter
+then checks its input budget separately. The byte limit is not an exact token
+count, and shortest paths do not guarantee token savings or better answers.
+
+Hybrid mode can recover linked facts that do not repeat the query's words, but
+irrelevant or obsolete links can displace useful lexical matches. Keep lexical
+mode unless the vault's links are useful for the questions being asked. Treat
+all retrieved content as untrusted reference material in either mode.
+
+## Retrieval tests and benchmarks
+
+```bash
+npm test
+npm run benchmark:retrieval -- --output=out/retrieval-benchmark.json
+```
+
+The benchmark compares lexical and hybrid modes using the real filesystem
+loader, parser, and retrieval code, with VS Code configuration stubbed. It
+reports cold first-query and warm median/p95 timings, payload bytes, and raw
+samples. Loading, network requests, and model inference are outside query timing.
+Use `--quick` for a smaller smoke run.
+
+Eight manually labeled synthetic cases check supporting-fact recall, including
+backlinks, multiple hops, broken links, no matches, and a noisy-link
+counterexample. These are diagnostic fixtures, not a representative answer-quality
+study or evidence for a token-reduction percentage. Benchmark reports remain
+local build artifacts. See [benchmark methodology](docs/retrieval-benchmarks.md).
+
+---
+
 ## File Format
 
 A session produces content-addressed Markdown segments (`chat_<session>_<hash>.md`).
@@ -139,6 +208,8 @@ src/
 │   └── ChatHandler.ts    # Prompt assembly + context injection
 ├── context/
 │   ├── ContextManager.ts # Loads .md files, builds context blocks
+│   ├── ContextGraph.ts   # Weighted wikilinks and bounded multi-source Dijkstra
+│   ├── MinHeap.ts        # Binary priority queue for shortest-path search
 │   ├── markdownParsing.ts# Pure parsing helpers (unit tested)
 │   └── FileWatcher.ts    # Watches sync folder for changes
 ├── llm/
@@ -147,7 +218,9 @@ src/
 ├── markdown/
 │   └── MarkdownExporter.ts  # Exports sessions to structured .md
 ├── test/
-│   └── markdownParsing.test.ts  # Unit tests (npm test)
+│   ├── contextGraph.test.ts     # Heap, shortest paths, graph bounds
+│   ├── hybridRetrieval.test.ts  # Retrieval integration and byte budgets
+│   └── markdownParsing.test.ts # Parsing tests (npm test)
 └── webview/
     └── chat.html         # Chat UI (vanilla JS)
 ```

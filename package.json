@@ -93,6 +93,33 @@
           "default": 5,
           "minimum": 1
         },
+        "contextSync.retrievalMode": {
+          "type": "string",
+          "enum": ["lexical", "hybrid"],
+          "default": "lexical",
+          "description": "Rank by keyword overlap, or add supporting notes found by weighted Dijkstra traversal of wikilinks."
+        },
+        "contextSync.maxContextBytes": {
+          "type": "integer",
+          "default": 4096,
+          "minimum": 512,
+          "maximum": 65536,
+          "description": "Maximum UTF-8 bytes in the shared context block. This is a byte limit; model token limits are checked separately."
+        },
+        "contextSync.maxGraphDistance": {
+          "type": "number",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum cumulative graph cost in hybrid mode. Link costs range from 1 to 2; zero disables expansion."
+        },
+        "contextSync.maxGraphNodes": {
+          "type": "integer",
+          "default": 200,
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Maximum settled nodes per graph search in hybrid mode. Edge scans are also bounded."
+        },
         "contextSync.anthropicModels": {
           "type": "array",
           "items": {
@@ -129,6 +156,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node scripts/test.cjs",
+    "benchmark:retrieval": "npm run compile && node scripts/benchmark-retrieval.cjs",
     "package": "vsce package"
   },
   "devDependencies": {
